@@ -1383,7 +1383,7 @@ fn fmt_method(arg: &MethodArguments, f: &mut Formatter<'_>) -> Result<bool, &'st
                     write!(
                         f,
                         "(\"{}\", {}:u, {}:new_id)",
-                        EscapeAsciiPrintable(string),
+                        string.escape_ascii(),
                         version,
                         id
                     )
@@ -1398,7 +1398,7 @@ fn fmt_method(arg: &MethodArguments, f: &mut Formatter<'_>) -> Result<bool, &'st
             WaylandArgument::String | WaylandArgument::OptionalString => {
                 let ostring = parse_string(&mut tail)?;
                 if (if let Some(string) = ostring {
-                    write!(f, "\"{}\"", EscapeAsciiPrintable(string))
+                    write!(f, "\"{}\"", string.escape_ascii())
                 } else {
                     write!(f, "null_str")
                 })

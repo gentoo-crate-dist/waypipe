@@ -240,23 +240,6 @@ impl Display for EscapeWlName<'_> {
     }
 }
 
-/** A type to escape all non-ascii-printable characters when Displayed, to leave strings
- * somewhat legible but make it clear exactly what bytes they contain */
-pub struct EscapeAsciiPrintable<'a>(pub &'a [u8]);
-impl Display for EscapeAsciiPrintable<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        for c in self.0 {
-            match *c {
-                b' '..=b'~' => write!(f, "{}", char::from_u32(*c as u32).unwrap()),
-                _ => {
-                    write!(f, "\\x{:02x}", *c)
-                }
-            }?
-        }
-        Ok(())
-    }
-}
-
 /** Format a bool as 'T' or 'F' */
 pub fn fmt_bool(x: bool) -> char {
     if x {

@@ -167,7 +167,7 @@ pub fn provide_secctx(
                     "Failed to set security context: Wayland error on {}, {}: {}",
                     objid,
                     code,
-                    EscapeAsciiPrintable(errmsg)
+                    errmsg.escape_ascii(),
                 ));
             } else {
                 debug!("Unexpected event from object {}: {}", object_id, opcode);

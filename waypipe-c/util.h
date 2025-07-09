@@ -79,7 +79,7 @@ int parse_uint32(const char *str, uint32_t *val);
 
 /* Multiple string concatenation; returns number of bytes written and
  * ensures null termination. Is async-signal-safe, unlike sprintf.
- * Last argment must be NULL. If there is not enough space, returns 0. */
+ * Last argument must be NULL. If there is not enough space, returns 0. */
 size_t multi_strcat(char *dest, size_t dest_space, ...);
 
 /** Is the string a well-formed UTF-8 code point sequence, per Unicode 15.0? */
@@ -136,7 +136,7 @@ bool files_equiv(int fd_a, int fd_b);
  * Reads src_path, trims off the filename part, and places the filename
  * in rel_socket ; if the file name is too long, returns -1, otherwise
  * returns 0. Sets the SA_FAMILY of `rel_socket` to AF_UNIX. If src_path
- * contains no folder seperations, then src_path is truncated down to the
+ * contains no folder separations, then src_path is truncated down to the
  * empty string.
  */
 int split_socket_path(char *src_path, struct sockaddr_un *rel_socket);

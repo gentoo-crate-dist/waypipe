@@ -632,7 +632,7 @@ fn get_damage_rects(surface: &ObjWlSurface, attachment: &BufferAttachment) -> Ve
     };
     let first_idx = first_idx_offset + 1;
     if surface.damage_history[first_idx].attachment != *attachment {
-        /* Require an exact match: it is posssible that the surface->buffer coordinate
+        /* Require an exact match: it is possible that the surface->buffer coordinate
          * transform and the buffer contents have changed in concert so that the surface
          * pixels remain the same, even though all buffer pixels are different. In this
          * scenario no damage will be reported. However, Waypipe must still update all
@@ -1782,7 +1782,7 @@ pub fn process_way_msg(
                     return Err(tag!("Surface object has invalid extra type"));
                 }
             } else {
-                return Err(tag!("Attaching to nonexistant object"));
+                return Err(tag!("Attaching to nonexistent object"));
             }
 
             copy_msg(msg, dst);
@@ -2443,7 +2443,7 @@ pub fn process_way_msg(
             match transl {
                 TranslationInfo::FromChannel((_, _)) => {
                     /* Do nothing: the OpenDMABUF message will be sent at time of ::create or ::create_immed ;
-                     * there is no point in dequeing it earlier. Also, there will only be one message, even if
+                     * there is no point in dequeuing it earlier. Also, there will only be one message, even if
                      * there are multiple planes. */
                 }
                 TranslationInfo::FromWayland((x, _)) => {

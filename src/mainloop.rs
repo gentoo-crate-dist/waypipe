@@ -589,7 +589,7 @@ enum ShadowFdPipeBuffer {
     // todo: use ring buffer, and/or increase size to 32K
     ReadFromWayland((Box<[u8; 4096]>, usize)),
     // Note: no mechanism for backpressure at the moment. Not too critical for pipes since typically
-    // appliation processing is faster than network. Some client pairs could lead to this growing
+    // application processing is faster than network. Some client pairs could lead to this growing
     // large, but they could also waste memory as is.
     ReadFromChannel(VecDeque<u8>),
 }
@@ -1993,7 +1993,7 @@ fn process_sfd_msg(
 }
 
 /** Maximize total length of the intervals on which a single diff or fill operation
- * should be peformed */
+ * should be performed */
 const DIFF_CHUNKSIZE: u32 = 262144;
 
 /** Construct BufferFill messages for an entire shared memory file descriptor */

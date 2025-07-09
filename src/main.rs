@@ -268,7 +268,7 @@ fn prune_connections(connections: &mut BTreeMap<u32, std::process::Child>, pid: 
 }
 
 /** Wait until all processes in the set have died */
-fn wait_for_connnections(mut connections: BTreeMap<u32, std::process::Child>) {
+fn wait_for_connections(mut connections: BTreeMap<u32, std::process::Child>) {
     while let Some((_, mut child)) = connections.pop_first() {
         debug!("Waiting for dead child {} to reveal status", child.id());
         let _ = child.wait();
@@ -467,7 +467,7 @@ fn socket_connect(
                 }
                 x
             };
-            r.map_err(|x| tag!("Failed to connnect to socket at {:?}: {}", path, x))?;
+            r.map_err(|x| tag!("Failed to connect to socket at {:?}: {}", path, x))?;
 
             socket
         }
@@ -495,7 +495,7 @@ fn socket_connect(
                 assert!(std::mem::align_of::<libc::sockaddr_vm>() == 4);
                 assert!(std::mem::size_of::<libc::sockaddr_vm>() == 16);
 
-                // SAFETY: `addr` is repr(C) and fully initialzied;
+                // SAFETY: `addr` is repr(C) and fully initialized;
                 // connect() only reads within the size bounds given
                 let r = libc::connect(
                     socket.as_raw_fd(),
@@ -504,7 +504,7 @@ fn socket_connect(
                 );
                 if r != 0 {
                     return Err(tag!(
-                        "Failed to connnect to socket at {}: {}",
+                        "Failed to connect to socket at {}: {}",
                         v.to_string(),
                         Errno::last()
                     ));
@@ -1054,7 +1054,7 @@ fn run_server_multi(
 
     debug!("Shutting down");
     // Wait for subprocesses to
-    wait_for_connnections(connections);
+    wait_for_connections(connections);
     debug!("Done");
     Ok(())
 }
@@ -1306,7 +1306,7 @@ fn run_client_multi(
     drop(sock_cleanup);
 
     debug!("Shutting down");
-    wait_for_connnections(connections);
+    wait_for_connections(connections);
 
     if let Some(mut child) = cmd_child {
         debug!(

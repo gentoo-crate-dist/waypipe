@@ -639,7 +639,7 @@ static void clear_old_transfers(
 	}
 }
 
-/* Returns 0 sucessful -1 if fatal error, -2 if closed */
+/* Returns 0 successful -1 if fatal error, -2 if closed */
 static int partial_write_transfer(int chanfd, struct transfer_queue *td,
 		int *total_written, int max_iov)
 {

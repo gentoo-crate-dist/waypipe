@@ -85,7 +85,7 @@ pub enum WmsgType {
     /** Create a new DMABUF with the given size and \ref dmabuf_slice_data.
      * Format: \ref wmsg_open_dmabuf */
     OpenDMABUF = 4,
-    /** Fill the region of the file with the folllowing data. The data
+    /** Fill the region of the file with the following data. The data
      * should be compressed according to the global compression option.
      * Format: \ref wmsg_buffer_fill */
     BufferFill = 5,

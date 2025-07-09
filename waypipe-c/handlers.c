@@ -1684,7 +1684,7 @@ void do_zwp_linux_dmabuf_feedback_v1_evt_format_table(
 		fdtype = FDC_FILE;
 	}
 	if (fdtype != FDC_FILE || fdsz != size) {
-		wp_error("format tabl fd %d was not file-like (type=%s), and size=%zu did not match %u",
+		wp_error("format table fd %d was not file-like (type=%s), and size=%zu did not match %u",
 				fd, fdcat_to_str(fdtype), fdsz, size);
 		return;
 	}

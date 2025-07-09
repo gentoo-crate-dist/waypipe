@@ -217,7 +217,7 @@ struct ObjExtImageCopyCaptureFrame {
     /** This is reset to None when the parent session is destroyed. */
     capture_session: Option<ObjId>,
 
-    /** If the parent session is destroyed, retain the last list of suppported modifiers here. */
+    /** If the parent session is destroyed, retain the last list of supported modifiers here. */
     supported_modifiers: Vec<(u32, u64)>,
 }
 

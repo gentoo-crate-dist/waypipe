@@ -5605,6 +5605,10 @@ pub struct Options {
     pub threads: u32,
     /** A valid utf8 string with which to prefix xdg toplevel titles */
     pub title_prefix: String,
+    /** A valid utf8 string with which to set xdg toplevel app_ids */
+    pub app_id: String,
+    /** A valid utf8 string with which to prefix xdg toplevel app_ids */
+    pub app_id_prefix: String,
     /* If true, filter out protocols and messages using dmabufs */
     pub no_gpu: bool,
     /* The drm render node to use (if the Wayland compositor does not specify a specific node) */

@@ -108,6 +108,7 @@ handled_funcs = [
     ("wp_viewport", "set_source"),
     ("wp_viewporter", "get_viewport"),
     ("xdg_surface", "get_toplevel"),
+    ("xdg_toplevel", "set_app_id"),
     ("xdg_toplevel", "set_title"),
     ("xdg_toplevel_icon_manager_v1", "create_icon"),
     ("xdg_toplevel_icon_manager_v1", "done"),

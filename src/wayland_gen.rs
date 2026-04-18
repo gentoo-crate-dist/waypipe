@@ -6606,6 +6606,25 @@ pub fn parse_req_xdg_toplevel_set_title<'a>(mut msg: &'a [u8]) -> Result<&'a [u8
     Ok(arg1)
 }
 pub const OPCODE_XDG_TOPLEVEL_SET_TITLE: MethodId = MethodId::Request(2);
+pub fn write_req_xdg_toplevel_set_app_id(dst: &mut &mut [u8], for_id: ObjId, app_id: &[u8]) {
+    let l = length_req_xdg_toplevel_set_app_id(app_id.len());
+    write_header(dst, for_id, l, 3, 0);
+    write_string(dst, Some(app_id));
+}
+pub fn length_req_xdg_toplevel_set_app_id(app_id_len: usize) -> usize {
+    let mut v = 8;
+    v += length_string(app_id_len);
+    v
+}
+pub fn parse_req_xdg_toplevel_set_app_id<'a>(mut msg: &'a [u8]) -> Result<&'a [u8], &'static str> {
+    msg = msg.get(8..).ok_or(PARSE_ERROR)?;
+    let arg1 = parse_string(&mut msg)?.ok_or(PARSE_ERROR)?;
+    if !msg.is_empty() {
+        return Err(PARSE_ERROR);
+    }
+    Ok(arg1)
+}
+pub const OPCODE_XDG_TOPLEVEL_SET_APP_ID: MethodId = MethodId::Request(3);
 const DATA_XDG_TOPLEVEL: WaylandData = WaylandData {
     name: "xdg_toplevel",
     evts: &[

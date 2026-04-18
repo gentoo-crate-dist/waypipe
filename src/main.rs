@@ -343,6 +343,14 @@ fn build_connection_command<'a>(
         args.push(OsStr::new("--title-prefix"));
         args.push(OsStr::new(&options.title_prefix));
     }
+    if !options.app_id.is_empty() {
+        args.push(OsStr::new("--app-id"));
+        args.push(OsStr::new(&options.app_id));
+    }
+    if !options.app_id_prefix.is_empty() {
+        args.push(OsStr::new("--app-id-prefix"));
+        args.push(OsStr::new(&options.app_id_prefix));
+    }
     if options.video.format.is_some() {
         args.push(vid_str);
     }
@@ -2155,6 +2163,20 @@ fn main() -> Result<ExitCode, String> {
                 .default_value(""),
         )
         .arg(
+            Arg::new("app-id")
+                .long("app-id")
+                .value_name("str")
+                .help("Set app id for all windows")
+                .default_value(""),
+        )
+        .arg(
+            Arg::new("app-id-prefix")
+                .long("app-id-prefix")
+                .value_name("str")
+                .help("Prepend string to all window app ids")
+                .default_value(""),
+        )
+        .arg(
             Arg::new("unlink-socket")
                 .long("unlink-socket")
                 .help("server: Unlink the socket that Waypipe connects to")
@@ -2303,6 +2325,8 @@ fn main() -> Result<ExitCode, String> {
     let socket_arg = matches.get_one::<OsString>("socket");
     let remote_socket_arg = matches.get_one::<OsString>("remote-socket");
     let title_prefix = matches.get_one::<String>("title-prefix").unwrap();
+    let app_id = matches.get_one::<String>("app-id").unwrap();
+    let app_id_prefix = matches.get_one::<String>("app-id-prefix").unwrap();
     let display = matches.get_one::<PathBuf>("display");
     let threads = matches.get_one::<u32>("threads").unwrap();
     let unlink = *matches.get_one::<bool>("unlink-socket").unwrap();
@@ -2397,6 +2421,8 @@ fn main() -> Result<ExitCode, String> {
         video,
         threads: *threads,
         title_prefix: (*title_prefix).clone(),
+        app_id: (*app_id).clone(),
+        app_id_prefix: (*app_id_prefix).clone(),
         drm_node: drm_node.cloned(),
         debug_store_video: test_store_video,
         test_skip_vulkan,

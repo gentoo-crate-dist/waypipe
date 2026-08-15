@@ -85,7 +85,7 @@ pub enum WmsgType {
     /** Create a new DMABUF with the given size and \ref dmabuf_slice_data.
      * Format: \ref wmsg_open_dmabuf */
     OpenDMABUF = 4,
-    /** Fill the region of the file with the folllowing data. The data
+    /** Fill the region of the file with the following data. The data
      * should be compressed according to the global compression option.
      * Format: \ref wmsg_buffer_fill */
     BufferFill = 5,
@@ -249,23 +249,6 @@ impl Display for EscapeWlName<'_> {
                 b'_' | b'a'..=b'z' | b'0'..=b'9' | b'A'..=b'Z' => {
                     write!(f, "{}", char::from_u32(*c as u32).unwrap())
                 }
-                _ => {
-                    write!(f, "\\x{:02x}", *c)
-                }
-            }?
-        }
-        Ok(())
-    }
-}
-
-/** A type to escape all non-ascii-printable characters when Displayed, to leave strings
- * somewhat legible but make it clear exactly what bytes they contain */
-pub struct EscapeAsciiPrintable<'a>(pub &'a [u8]);
-impl Display for EscapeAsciiPrintable<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        for c in self.0 {
-            match *c {
-                b' '..=b'~' => write!(f, "{}", char::from_u32(*c as u32).unwrap()),
                 _ => {
                     write!(f, "\\x{:02x}", *c)
                 }
@@ -464,6 +447,13 @@ pub struct VideoSetting {
     pub dec_pref: Option<CodecPreference>,
 }
 
+impl VideoSetting {
+    pub fn set_pref(&mut self, pref: Option<CodecPreference>) {
+        self.enc_pref = pref;
+        self.dec_pref = pref;
+    }
+}
+
 impl FromStr for VideoSetting {
     type Err = &'static str;
 
@@ -478,32 +468,25 @@ impl FromStr for VideoSetting {
         };
 
         for chunk in s.split_terminator(',') {
-            if chunk == "none" {
-                f.format = None;
-            } else if chunk == "hw" {
-                f.enc_pref = Some(CodecPreference::HW);
-                f.dec_pref = Some(CodecPreference::HW);
-            } else if chunk == "sw" {
-                f.enc_pref = Some(CodecPreference::SW);
-                f.dec_pref = Some(CodecPreference::SW);
-            } else if chunk == "swenc" {
-                f.enc_pref = Some(CodecPreference::SW);
-            } else if chunk == "hwenc" {
-                f.enc_pref = Some(CodecPreference::HW);
-            } else if chunk == "swdec" {
-                f.dec_pref = Some(CodecPreference::SW);
-            } else if chunk == "hwdec" {
-                f.dec_pref = Some(CodecPreference::HW);
-            } else if chunk == "h264" {
-                f.format = Some(VideoFormat::H264);
-            } else if chunk == "vp9" {
-                f.format = Some(VideoFormat::VP9);
-            } else if chunk == "av1" {
-                f.format = Some(VideoFormat::AV1);
-            } else if let Some(suffix) = chunk.strip_prefix("bpf=") {
-                f.bits_per_frame = Some(suffix.parse::<f32>().map_err(|_| FAILURE)?);
-            } else {
-                return Err(FAILURE);
+            match chunk {
+                "none" => f.format = None,
+                "hw" => f.set_pref(Some(CodecPreference::HW)),
+                "hwenc" => f.enc_pref = Some(CodecPreference::HW),
+                "hwdec" => f.dec_pref = Some(CodecPreference::HW),
+                "sw" => f.set_pref(Some(CodecPreference::SW)),
+                "swenc" => f.enc_pref = Some(CodecPreference::SW),
+                "swdec" => f.dec_pref = Some(CodecPreference::SW),
+                "h264" => f.format = Some(VideoFormat::H264),
+                "vp9" => f.format = Some(VideoFormat::VP9),
+                "av1" => f.format = Some(VideoFormat::AV1),
+                _ => {
+                    f.bits_per_frame = Some(
+                        chunk
+                            .strip_prefix("bpf=")
+                            .ok_or(FAILURE)
+                            .and_then(|suffix| suffix.parse().map_err(|_| FAILURE))?,
+                    );
+                }
             }
         }
         Ok(f)

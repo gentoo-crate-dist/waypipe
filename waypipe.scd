@@ -277,7 +277,7 @@ for efficient inter-vm communication. The following scenarios are supported:
 In this example waypipe server connects to a virtual machine with CID 3 on port 1234.
 
 - Running applications in a guest virtual machine from other guest virtual machines.
-When running both client and server in virtual machines it is possble to enable the
+When running both client and server in virtual machines it is possible to enable the
 VMADDR_FLAG_TO_HOST flag for sibling communication by prefixing the CID with an s:
 
 ```

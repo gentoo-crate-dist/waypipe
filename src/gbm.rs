@@ -36,7 +36,7 @@ pub struct GBMDevice {
 
 /** A type corresponding to a DMABUF object */
 pub struct GBMDmabuf {
-    /** Reference to keep device alive at least as long as the gbm_bo; the documention does
+    /** Reference to keep device alive at least as long as the gbm_bo; the documentation does
      * not state that this is necessary, but it also does not state that it isn't. */
     device: Rc<GBMDevice>,
     bo: *mut gbm_bo,

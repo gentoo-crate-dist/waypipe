@@ -198,11 +198,11 @@ fn estimate_diff_speed(pattern: DiffPattern) {
 
     match pattern {
         DiffPattern::IdealOn | DiffPattern::On => {
-            /* disagree with baseline everwhere */
+            /* disagree with baseline everywhere */
             source.fill(1);
         }
         DiffPattern::MemcmpOff | DiffPattern::Off | DiffPattern::MinimumOff => {
-            /* match baseline everwhere */
+            /* match baseline everywhere */
             source.fill(0);
         }
         DiffPattern::Alternating100 => {

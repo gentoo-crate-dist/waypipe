@@ -51,7 +51,7 @@ enum StatusBad {
     /** Corresponds to [TestCategory::Fail] */
     Fail(String),
 }
-/** Result of a test, organized so that StatusBad can be progated with ? */
+/** Result of a test, organized so that StatusBad can be propagated with ? */
 type TestResult = Result<StatusOk, StatusBad>;
 
 /** The result of a test. */
@@ -864,7 +864,7 @@ fn update_file_contents(fd: &OwnedFd, data: &[u8]) -> Result<(), String> {
     drop(mapping);
     Ok(())
 }
-/** Replace the conents of a memfd with `data`, changing the file size as needed. */
+/** Replace the contents of a memfd with `data`, changing the file size as needed. */
 fn resize_file_with_contents(fd: &OwnedFd, data: &[u8]) -> Result<(), String> {
     unistd::ftruncate(fd, data.len().try_into().unwrap())
         .map_err(|x| tag!("Failed to resize memfd: {:?}", x))?;

@@ -112,3 +112,18 @@ strip = "debuginfo"
 inherits = "meson-s"
 debug = false
 strip = "debuginfo"
+
+[package.metadata.typos.default.extend-words]
+Ser = "Ser"
+cll = "cll"
+typ = "typ"
+lod = "lod"
+mis = "mis"
+ba = "ba"
+nto = "nto"
+ot = "ot"
+frst = "frst"
+dne = "dne"
+suface = "suface"
+parm = "parm"
+

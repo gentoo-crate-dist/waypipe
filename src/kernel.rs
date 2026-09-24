@@ -682,7 +682,7 @@ pub fn apply_diff_one(
         // todo: out of bounds read?
         let start = u32::from_le_bytes(diff[pos..pos + 4].try_into().unwrap()) as usize;
         let end = u32::from_le_bytes(diff[pos + 4..pos + 8].try_into().unwrap()) as usize;
-        if end <= start || end > buf_end || pos + 4 * (end - start) > 4 * nblocks {
+        if end <= start || 4 * end > buf_end || pos + 8 + 4 * (end - start) > 4 * nblocks {
             return Err(tag!(
                 "copy interval invalid: pos {} segment [{},{}) mirror range [{},{}) remaining {}",
                 pos,
@@ -772,9 +772,11 @@ pub fn compute_diff_span(
 
     let mut pos = 0;
     while pos < 4 * nblocks {
-        // todo: error on out of bounds read?
         let span_start = u32::from_le_bytes(diff[pos..pos + 4].try_into().unwrap()) as usize;
         let span_end = u32::from_le_bytes(diff[pos + 4..pos + 8].try_into().unwrap()) as usize;
+        if span_start >= span_end {
+            return Err("empty copy span");
+        }
         pos += 8;
         pos += (span_end - span_start) * 4;
         start = std::cmp::min(start, span_start);

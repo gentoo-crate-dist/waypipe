@@ -3017,6 +3017,16 @@ fn make_copy_regions(
             end,
             row_length
         );
+        assert!(
+            end_row < img.height,
+            "overly long interval [{},{}), final row {}, at row length {} and image {}x{}",
+            start,
+            end,
+            end_row,
+            row_length,
+            img.width,
+            img.height
+        );
         let mut start_pos = (start % row_length) / ubpp;
         let mut end_pos = 1 + ((end - 1) % row_length) / ubpp;
         let w = img.width;

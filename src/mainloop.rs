@@ -3244,6 +3244,23 @@ fn run_decomp_task(task: &DecompTask, cache: &mut ThreadCache) -> Result<DecompR
                 let (region_start, region_end) =
                     compute_diff_span(reread_view.data, ntrailing as usize, task.file_size)?;
 
+                if region_end > target.dst.nominal_size(target.view_row_stride) {
+                    return Err(tag!(
+                        "Diff region too long, end {} > {}",
+                        region_end,
+                        target.dst.nominal_size(target.view_row_stride)
+                    ));
+                }
+                if let Some(mirror) = &target.mirror {
+                    if region_end > mirror.len() {
+                        return Err(tag!(
+                            "Diff region too long, end {} > {}",
+                            region_end,
+                            mirror.len()
+                        ));
+                    }
+                }
+
                 let mut misaligned: bool = false;
                 let bpp = target.dst.get_bpp();
 
@@ -3352,6 +3369,21 @@ fn run_decomp_task(task: &DecompTask, cache: &mut ThreadCache) -> Result<DecompR
                 let (region_start, region_end) =
                     compute_diff_span(&diff, ntrailing as usize, task.file_size)?;
 
+                if region_end > target.target.mapping.get_u8().len() {
+                    return Err(tag!(
+                        "Diff region too long, end {} > {}",
+                        region_end,
+                        target.target.mapping.get_u8().len()
+                    ));
+                }
+                if !target.skip_mirror && region_end > target.target.mem_mirror.len() {
+                    return Err(tag!(
+                        "Diff region too long, end {} > {}",
+                        region_end,
+                        target.target.mem_mirror.len()
+                    ));
+                }
+
                 Ok(DecompReturn::Shm(ApplyTask {
                     sequence: task.sequence.unwrap(),
                     data: diff,
@@ -3377,6 +3409,14 @@ fn run_decomp_task(task: &DecompTask, cache: &mut ThreadCache) -> Result<DecompR
                 /* Compute region from diff */
                 let (region_start, region_end) =
                     compute_diff_span(&diff, ntrailing as usize, task.file_size)?;
+
+                if region_end > target.mirror.len() {
+                    return Err(tag!(
+                        "Diff region too long, end {} > {}",
+                        region_end,
+                        target.mirror.len()
+                    ));
+                }
 
                 Ok(DecompReturn::Shm(ApplyTask {
                     sequence: task.sequence.unwrap(),

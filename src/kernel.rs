@@ -670,38 +670,34 @@ pub fn apply_diff_one(
     /* Starting point in the mapping of the mirror */
     mir_start: usize,
     mirror: &mut [u8],
-) -> Result<(), String> {
-    assert!((diff.len() - ntrailing) % 4 == 0);
-    let mlen = mirror.len();
-    let nblocks = (diff.len() - ntrailing) / 4;
+) -> Result<(), &'static str> {
+    assert!(diff.len() >= ntrailing);
 
-    // todo: check that diff() is 4-aligned
-    let buf_end = mir_start + mlen;
-    let mut pos: usize = 0;
-    while pos < 4 * nblocks {
-        // todo: out of bounds read?
-        let start = u32::from_le_bytes(diff[pos..pos + 4].try_into().unwrap()) as usize;
-        let end = u32::from_le_bytes(diff[pos + 4..pos + 8].try_into().unwrap()) as usize;
-        if end <= start || 4 * end > buf_end || pos + 8 + 4 * (end - start) > 4 * nblocks {
-            return Err(tag!(
-                "copy interval invalid: pos {} segment [{},{}) mirror range [{},{}) remaining {}",
-                pos,
-                start,
-                end,
-                mir_start / 4,
-                buf_end / 4,
-                nblocks - pos / 4
-            ));
+    let (mut diff_main, trailing) = diff.split_at(diff.len() - ntrailing);
+    assert!(diff_main.len() % 4 == 0);
+
+    let mlen = mirror.len();
+    let mir_end = mirror.len().checked_add(mir_start).unwrap();
+
+    while !diff_main.is_empty() {
+        let Some((header, diff_end)) = diff_main.split_first_chunk::<8>() else {
+            return Err("Incomplete copy interval header");
+        };
+        let span_start = u32::from_le_bytes(header[..4].try_into().unwrap()) as usize;
+        let span_end = u32::from_le_bytes(header[4..].try_into().unwrap()) as usize;
+        if span_end <= span_start || span_end - span_start > diff_end.len() / 4 {
+            return Err("Copy interval invalid");
         }
-        pos += 8;
-        mirror[(start * 4 - mir_start)..(end * 4 - mir_start)]
-            .copy_from_slice(&diff[pos..pos + 4 * (end - start)]);
-        pos += (end - start) * 4;
+        let (copy, diff_end) = diff_end.split_at(4 * (span_end - span_start));
+        diff_main = diff_end;
+
+        assert!(span_start >= mir_start / 4 && span_end <= mir_end / 4);
+        mirror[(span_start * 4 - mir_start)..(span_end * 4 - mir_start)].copy_from_slice(copy);
     }
 
-    if ntrailing > 0 {
+    if !trailing.is_empty() {
         let offset = mlen - ntrailing;
-        mirror[offset..].copy_from_slice(&diff[nblocks * 4..nblocks * 4 + ntrailing]);
+        mirror[offset..].copy_from_slice(trailing);
     }
 
     Ok(())
@@ -716,35 +712,44 @@ pub fn apply_diff(
     mirror: &mut [u8],
 ) -> Result<(), &'static str> {
     let target = &fd.get_u32();
-    assert!((diff.len() - ntrailing) % 4 == 0);
-    let nblocks = (diff.len() - ntrailing) / 4;
+    assert!(diff.len() >= ntrailing);
 
-    let buf_end = target.len();
-    let mut pos: usize = 0;
-    while pos < 4 * nblocks {
-        let start = u32::from_le_bytes(diff[pos..pos + 4].try_into().unwrap()) as usize;
-        let end = u32::from_le_bytes(diff[pos + 4..pos + 8].try_into().unwrap()) as usize;
-        if end <= start || end > buf_end || pos + 8 + 4 * (end - start) > 4 * nblocks {
+    let (mut diff_main, trailing) = diff.split_at(diff.len() - ntrailing);
+    assert!(diff_main.len() % 4 == 0);
+
+    let buf_end = 4 * target.len();
+    let mir_end = mirror.len().checked_add(mir_start).unwrap();
+    let dst_end = buf_end.min(mir_end);
+
+    while !diff_main.is_empty() {
+        let Some((header, diff_end)) = diff_main.split_first_chunk::<8>() else {
+            return Err("Incomplete copy interval header");
+        };
+        let span_start = u32::from_le_bytes(header[..4].try_into().unwrap()) as usize;
+        let span_end = u32::from_le_bytes(header[4..].try_into().unwrap()) as usize;
+        if span_end <= span_start || span_end - span_start > diff_end.len() / 4 {
             return Err("Copy interval invalid");
         }
-        pos += 8;
-        mirror[(start * 4 - mir_start)..(end * 4 - mir_start)]
-            .copy_from_slice(&diff[pos..pos + 4 * (end - start)]);
-        for i in 0..(end - start) {
-            target[i + start].store(
-                u32::from_le_bytes(diff[(pos + 4 * i)..(pos + 4 * (i + 1))].try_into().unwrap()),
+        let (copy, diff_end) = diff_end.split_at(4 * (span_end - span_start));
+        diff_main = diff_end;
+
+        assert!(span_start >= mir_start / 4 && span_end <= dst_end / 4);
+        mirror[(span_start * 4 - mir_start)..(span_end * 4 - mir_start)].copy_from_slice(copy);
+        for i in 0..(span_end - span_start) {
+            target[i + span_start].store(
+                u32::from_le_bytes(copy[4 * i..4 * (i + 1)].try_into().unwrap()),
                 Ordering::Relaxed,
             );
         }
-        pos += (end - start) * 4;
     }
 
-    if ntrailing > 0 {
+    if !trailing.is_empty() {
         let byte_level = &fd.get_u8();
+        assert!(byte_level.len() >= ntrailing && mir_end == byte_level.len());
         let offset = byte_level.len() - ntrailing;
         for i in 0..ntrailing {
-            byte_level[offset + i].store(diff[nblocks * 4 + i], Ordering::Relaxed);
-            mirror[offset + i - mir_start] = diff[nblocks * 4 + i];
+            byte_level[offset + i].store(trailing[i], Ordering::Relaxed);
+            mirror[offset + i - mir_start] = trailing[i];
         }
     }
 
@@ -760,27 +765,33 @@ pub fn compute_diff_span(
     let mut start = buf_len;
     let mut end = 0;
 
-    assert!((diff.len() - ntrailing) % 4 == 0);
-    let nblocks = (diff.len() - ntrailing) / 4;
+    assert!(diff.len() >= ntrailing);
+    let mut diff_main = &diff[..diff.len() - ntrailing];
+    assert!(diff_main.len() % 4 == 0);
+
+    let nblocks = diff_main.len() / 4;
     if nblocks == 0 {
         if ntrailing == 0 {
             return Err("computed diff span on empty diff");
         } else {
+            assert!(buf_len >= ntrailing);
             return Ok((buf_len - ntrailing, buf_len));
         }
     }
 
-    let mut pos = 0;
-    while pos < 4 * nblocks {
-        let span_start = u32::from_le_bytes(diff[pos..pos + 4].try_into().unwrap()) as usize;
-        let span_end = u32::from_le_bytes(diff[pos + 4..pos + 8].try_into().unwrap()) as usize;
-        if span_start >= span_end {
-            return Err("empty copy span");
+    while !diff_main.is_empty() {
+        let Some((header, diff_end)) = diff_main.split_first_chunk::<8>() else {
+            return Err("Incomplete copy interval header");
+        };
+        let span_start = u32::from_le_bytes(header[..4].try_into().unwrap()) as usize;
+        let span_end = u32::from_le_bytes(header[4..].try_into().unwrap()) as usize;
+        if span_end <= span_start || span_end - span_start > diff_end.len() / 4 {
+            return Err("Copy interval invalid");
         }
-        pos += 8;
-        pos += (span_end - span_start) * 4;
         start = std::cmp::min(start, span_start);
         end = std::cmp::max(end, span_end);
+
+        diff_main = &diff_end[4 * (span_end - span_start)..];
     }
 
     assert!(start < end);

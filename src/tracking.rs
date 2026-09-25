@@ -2648,6 +2648,16 @@ pub fn process_way_msg(
                     + length_req_zwp_linux_buffer_params_v1_create_immed();
                     check_space!(estimated_msg_len, params.planes.len(), remaining_space);
 
+                    let wayl_format = drm_to_wayland(drm_format);
+                    // TODO: this will need to change for multiplanar or packed formats
+                    let Some(layout) = get_shm_format_layout(wayl_format) else {
+                        return Err(tag!("Format without known bpp {}", drm_format));
+                    };
+
+                    if params.planes.is_empty() {
+                        return Err(tag!("Trying to create dmabuf without any planes"));
+                    }
+
                     let mut planes = Vec::new();
                     std::mem::swap(&mut params.planes, &mut planes);
 
@@ -2671,11 +2681,6 @@ pub fn process_way_msg(
                      * older Waypipe will do this, and newer will ignore it. */
                     let (mod_hi, mod_lo) = split_u64(mod_linear);
 
-                    let wayl_format = drm_to_wayland(drm_format);
-                    // TODO: this will need to change for multiplanar or packed formats
-                    let Some(layout) = get_shm_format_layout(wayl_format) else {
-                        return Err(tag!("Format without known bpp {}", drm_format));
-                    };
                     let bpp = layout.planes[0].bpt;
 
                     write_req_zwp_linux_buffer_params_v1_add(
@@ -2774,6 +2779,15 @@ pub fn process_way_msg(
                     + length_req_zwp_linux_buffer_params_v1_create_immed();
                     check_space!(estimated_msg_len, params.planes.len(), remaining_space);
 
+                    let wayl_format = drm_to_wayland(drm_format);
+                    // TODO: update for multiplanar/complicated pixel formats
+                    let Some(layout) = get_shm_format_layout(wayl_format) else {
+                        return Err(tag!("Format without known bpp {}", drm_format));
+                    };
+                    if params.planes.is_empty() {
+                        return Err(tag!("Trying to create dmabuf without any planes"));
+                    }
+
                     let mut planes = Vec::new();
                     std::mem::swap(&mut params.planes, &mut planes);
 
@@ -2797,11 +2811,6 @@ pub fn process_way_msg(
                      * older Waypipe will do this, and newer will ignore it. */
                     let (mod_hi, mod_lo) = split_u64(mod_linear);
 
-                    let wayl_format = drm_to_wayland(drm_format);
-                    // TODO: update for multiplanar/complicated pixel formats
-                    let Some(layout) = get_shm_format_layout(wayl_format) else {
-                        return Err(tag!("Format without known bpp {}", drm_format));
-                    };
                     let bpp = layout.planes[0].bpt;
 
                     write_req_zwp_linux_buffer_params_v1_add(

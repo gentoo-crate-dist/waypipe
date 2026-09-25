@@ -2673,7 +2673,10 @@ pub fn process_way_msg(
 
                     let wayl_format = drm_to_wayland(drm_format);
                     // TODO: this will need to change for multiplanar or packed formats
-                    let bpp = get_shm_format_layout(wayl_format).unwrap().planes[0].bpt;
+                    let Some(layout) = get_shm_format_layout(wayl_format) else {
+                        return Err(tag!("Format without known bpp {}", drm_format));
+                    };
+                    let bpp = layout.planes[0].bpt;
 
                     write_req_zwp_linux_buffer_params_v1_add(
                         dst,
@@ -2796,7 +2799,10 @@ pub fn process_way_msg(
 
                     let wayl_format = drm_to_wayland(drm_format);
                     // TODO: update for multiplanar/complicated pixel formats
-                    let bpp = get_shm_format_layout(wayl_format).unwrap().planes[0].bpt;
+                    let Some(layout) = get_shm_format_layout(wayl_format) else {
+                        return Err(tag!("Format without known bpp {}", drm_format));
+                    };
+                    let bpp = layout.planes[0].bpt;
 
                     write_req_zwp_linux_buffer_params_v1_add(
                         dst,

@@ -2666,7 +2666,7 @@ pub fn process_way_msg(
                         height,
                         drm_format,
                         planes,
-                        &glob.opts,
+                        glob.opts,
                         &glob.dmabuf_device,
                         &mut glob.max_local_id,
                         &mut glob.map,
@@ -2796,7 +2796,7 @@ pub fn process_way_msg(
                         height,
                         drm_format,
                         planes,
-                        &glob.opts,
+                        glob.opts,
                         &glob.dmabuf_device,
                         &mut glob.max_local_id,
                         &mut glob.map,
@@ -2986,7 +2986,7 @@ pub fn process_way_msg(
             feedback.main_device = Some(main_device);
 
             if glob.on_display_side && matches!(glob.dmabuf_device, DmabufDevice::VulkanSetup(_)) {
-                complete_dmabuf_setup(&glob.opts, Some(main_device), &mut glob.dmabuf_device)?;
+                complete_dmabuf_setup(glob.opts, Some(main_device), &mut glob.dmabuf_device)?;
             }
 
             Ok(ProcMsg::Done)
@@ -3551,10 +3551,10 @@ pub fn process_way_msg(
 
                 match glob.dmabuf_device {
                     DmabufDevice::Unknown => {
-                        glob.dmabuf_device = try_setup_dmabuf_instance_full(&glob.opts, dev)?;
+                        glob.dmabuf_device = try_setup_dmabuf_instance_full(glob.opts, dev)?;
                     }
                     DmabufDevice::VulkanSetup(_) => {
-                        complete_dmabuf_setup(&glob.opts, dev, &mut glob.dmabuf_device)?;
+                        complete_dmabuf_setup(glob.opts, dev, &mut glob.dmabuf_device)?;
                     }
                     _ => (),
                 }
@@ -4262,7 +4262,7 @@ pub fn process_way_msg(
                                 /* Pick best device */
                                 None
                             };
-                            glob.dmabuf_device = try_setup_dmabuf_instance_light(&glob.opts, dev)?;
+                            glob.dmabuf_device = try_setup_dmabuf_instance_light(glob.opts, dev)?;
                             assert!(!matches!(glob.dmabuf_device, DmabufDevice::Unknown));
                         }
                     }
@@ -4394,13 +4394,13 @@ pub fn process_way_msg(
                     if light_setup {
                         /* In this case, device will be provided later through dmabuf-feedback
                          * main_device event */
-                        glob.dmabuf_device = try_setup_dmabuf_instance_light(&glob.opts, dev)?;
+                        glob.dmabuf_device = try_setup_dmabuf_instance_light(glob.opts, dev)?;
                     } else {
                         debug!(
                             "Client bound zwp_linux_dmabuf_v1 at version {} older than 4, using best-or-specified drm node",
                             version
                         );
-                        glob.dmabuf_device = try_setup_dmabuf_instance_full(&glob.opts, dev)?;
+                        glob.dmabuf_device = try_setup_dmabuf_instance_full(glob.opts, dev)?;
                     }
                     assert!(!matches!(glob.dmabuf_device, DmabufDevice::Unknown));
                 }
@@ -4410,7 +4410,7 @@ pub fn process_way_msg(
                     } else {
                         None
                     };
-                    complete_dmabuf_setup(&glob.opts, dev, &mut glob.dmabuf_device)?;
+                    complete_dmabuf_setup(glob.opts, dev, &mut glob.dmabuf_device)?;
                 }
                 if matches!(glob.dmabuf_device, DmabufDevice::Unavailable) {
                     return Err(tag!("Failed to set up a device to handle DMABUFS"));

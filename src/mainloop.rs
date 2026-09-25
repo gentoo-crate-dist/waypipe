@@ -111,7 +111,7 @@ pub enum DmabufDevice {
 }
 
 /** Most of the state used by the main loop (excluding in progress tasks and read/write buffers) */
-pub struct Globals {
+pub struct Globals<'a> {
     /* Index of ShadowFd by ID; ShadowFds stay alive as long as they have
      * some type of reference by the protocol objects or main code */
     pub map: BTreeMap<Rid, Weak<RefCell<ShadowFd>>>,
@@ -148,7 +148,7 @@ pub struct Globals {
      * creates to be safe. */
     pub screencopy_restrictions: BTreeMap<u32, Vec<u64>>,
 
-    pub opts: Options,
+    pub opts: &'a Options,
 
     /* Waypipe communication protocol version. For waypipe-client, this is fixed;
      * for waypipe-server, this may increase from the baseline 16 to the actual
@@ -4108,7 +4108,7 @@ fn process_wayland_1(
             &mut way_msg.output,
             comp,
             tasksys,
-            &glob.opts,
+            glob.opts,
         )?;
         if !keep {
             drop_list.push(*rid);
@@ -5750,7 +5750,7 @@ pub fn main_interface_loop(
         presentation_clock: None,
         advertised_modifiers: BTreeMap::new(),
         screencopy_restrictions: BTreeMap::new(),
-        opts: (*opts).clone(), // todo: reference opts instead?
+        opts,
         wire_version: init_wire_version,
         has_first_message: false,
         has_received_close: false,

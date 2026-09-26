@@ -404,13 +404,103 @@ unsafe fn unmap_dmabuf(bindings: &gbm, bo: *mut gbm_bo, handle: *mut c_void) {
     (bindings.gbm_bo_unmap)(bo, handle);
 }
 
+/**
+ * Copy the common bytes of a linear layout image with stride `src_stride` to one
+ * with stride `dst_stride`. Padding bytes may be left unmodified.
+ */
 fn stride_adjusted_copy(dst: &mut [u8], dst_stride: u32, src: &[u8], src_stride: u32, height: u32) {
     let common = dst_stride.min(src_stride);
+
+    // GBM buffers should always be < 2^32 bytes
+    assert!(dst_stride.checked_mul(height).is_some());
+    assert!(src_stride.checked_mul(height).is_some());
+
     for row in 0..height {
         dst[(dst_stride * row) as usize..((dst_stride * row) + common) as usize].copy_from_slice(
             &src[(src_stride * row) as usize..((src_stride * row) + common) as usize],
         )
     }
+}
+
+/**
+ * Equivalent to running `stride_adjusted_copy(tmp, dst_stride, src, src_stride, height)` and then
+ * extracting each of the segments of `tmp` given by `segments` into the packed `dst`.
+ *
+ * Requires `segments` to be disjoint, in increasing order, with a sum of lengths equal to dst.len().
+ *
+ * Padding bytes may be left unmodified.
+ */
+fn stride_adjusted_copy_segments(
+    dst: &mut [u8],
+    dst_stride: u32,
+    src: &[u8],
+    src_stride: u32,
+    height: u32,
+    segments: &[(usize, usize)],
+) {
+    // GBM buffers should always be < 2^32 bytes
+    let dst_end = dst_stride.checked_mul(height).unwrap();
+    assert!(src_stride.checked_mul(height).is_some());
+
+    let common = dst_stride.min(src_stride);
+
+    let mut dst_tail = dst;
+    let mut last_end = 0;
+    for segment in segments {
+        assert!(last_end <= segment.0 && segment.0 < segment.1 && segment.1 <= dst_end as usize);
+
+        let (mut dst_segment, rest) = dst_tail.split_at_mut(segment.1 - segment.0);
+        dst_tail = rest;
+        last_end = segment.1;
+
+        let mut start_row = segment.0 as u32 / dst_stride;
+        let end_row = (segment.1 as u32 - 1) / dst_stride;
+        let mut start_pos = segment.0 as u32 % dst_stride;
+        let mut end_pos = 1 + ((segment.1 as u32 - 1) % dst_stride);
+
+        if start_pos >= common {
+            if end_row == start_row {
+                // Entirely in padding bytes, skip
+                continue;
+            }
+            dst_segment = &mut dst_segment[(dst_stride - start_pos) as usize..];
+            start_pos = 0;
+            start_row += 1;
+        }
+        if end_pos > common {
+            let dst_seg_len = dst_segment.len();
+            dst_segment = &mut dst_segment[..dst_seg_len - (end_pos - common) as usize];
+            end_pos = common;
+        }
+
+        if start_row == end_row {
+            dst_segment.copy_from_slice(
+                &src[(start_row * src_stride + start_pos) as usize
+                    ..(start_row * src_stride + end_pos) as usize],
+            );
+        } else {
+            dst_segment[..(common - start_pos) as usize].copy_from_slice(
+                &src[(start_row * src_stride + start_pos) as usize
+                    ..(start_row * src_stride + common) as usize],
+            );
+
+            let dst_seg_len = dst_segment.len();
+            let body =
+                &mut dst_segment[(dst_stride - start_pos) as usize..dst_seg_len - end_pos as usize];
+            for row in start_row + 1..=end_row - 1 {
+                let offset = (dst_stride * (row - (start_row + 1))) as usize;
+
+                let copy_src =
+                    &src[(src_stride * row) as usize..((src_stride * row) + common) as usize];
+                body[offset..offset + common as usize].copy_from_slice(copy_src);
+            }
+
+            dst_segment[dst_seg_len - end_pos as usize..].copy_from_slice(
+                &src[(src_stride * end_row) as usize..(src_stride * end_row + end_pos) as usize],
+            );
+        }
+    }
+    assert!(dst_tail.is_empty());
 }
 
 impl GBMDmabuf {
@@ -420,6 +510,7 @@ impl GBMDmabuf {
         &mut self,
         view_row_stride: Option<u32>,
         data: &mut [u8],
+        segments: &[(usize, usize)],
     ) -> Result<(), String> {
         let data_stride = view_row_stride.unwrap_or(
             self.width
@@ -444,7 +535,14 @@ impl GBMDmabuf {
             assert!(mapped_length <= isize::MAX as usize);
 
             let mapped_region = std::slice::from_raw_parts(map_data, mapped_length);
-            stride_adjusted_copy(data, data_stride, mapped_region, map_stride, self.height);
+            stride_adjusted_copy_segments(
+                data,
+                data_stride,
+                mapped_region,
+                map_stride,
+                self.height,
+                segments,
+            );
 
             unmap_dmabuf(&self.device.bindings, self.bo, map_handle);
         }

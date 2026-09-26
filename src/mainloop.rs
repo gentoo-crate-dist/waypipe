@@ -439,7 +439,8 @@ struct DiffDmabufTask {
 
 enum ReadDmabufResult {
     Vulkan(Arc<VulkanBuffer>),
-    Shm(Vec<u8>),
+    /** A slice of the copy output */
+    Shm((Arc<AlignedArray>, usize, usize)),
 }
 
 /** Task to compute the changed data for a DMABUF: final step to compute the diff */
@@ -2386,17 +2387,7 @@ fn collect_updates(
             let (implicit_sync_file, must_poll) = dmabuf_setup_implicit_sync(data)?;
             data.using_implicit_sync = false;
 
-            let copied = if let DmabufImpl::Gbm(ref mut gbm_buf) = data.buf {
-                /* Copy out entire contents of buffer immediately and synchronously, do avoid
-                 * running into possible threading issues with libgbm. */
-                let mut v = vec![0; nominal_size];
-                gbm_buf.copy_from_dmabuf(data.view_row_stride, &mut v)?;
-                v
-            } else {
-                Vec::new()
-            };
-
-            if data.first_damage || !copied.is_empty() {
+            if data.first_damage {
                 /* The first time _any_ damage is reported, do a fill transfer and
                  * set up the mirror for future diffs. */
                 data.first_damage = false;
@@ -2405,6 +2396,20 @@ fn collect_updates(
                     /* Create mirror for use by future diff operations */
                     data.mirror = Some(Arc::new(Mirror::new(nominal_size, false)?));
                 }
+
+                let copied = if let DmabufImpl::Gbm(ref mut gbm_buf) = data.buf {
+                    /* Copy out entire contents of buffer immediately and synchronously, to avoid
+                     * running into possible threading issues with libgbm. */
+                    let mut v = AlignedArray::new(nominal_size);
+                    gbm_buf.copy_from_dmabuf(
+                        data.view_row_stride,
+                        v.get_mut(),
+                        &[(0, nominal_size)],
+                    )?;
+                    Some(Arc::new(v))
+                } else {
+                    None
+                };
 
                 let div_intv = (0_u32, (nominal_size / 64) as u32);
                 let len = div_intv.1 - div_intv.0;
@@ -2447,8 +2452,10 @@ fn collect_updates(
                             region_end: end,
                             mirror: data.mirror.clone(),
                             wait_until: 0,
-                            read_buf: ReadDmabufResult::Shm(Vec::from(
-                                &copied[start as usize..end as usize],
+                            read_buf: ReadDmabufResult::Shm((
+                                copied.as_ref().unwrap().clone(),
+                                usize::try_from(start).unwrap(),
+                                usize::try_from(end).unwrap(),
                             )),
                         }),
                     };
@@ -2469,12 +2476,28 @@ fn collect_updates(
                     };
                 }
             } else {
+                let copied = if let DmabufImpl::Gbm(ref mut gbm_buf) = data.buf {
+                    /* Copy out entire contents of buffer immediately and synchronously, to avoid
+                     * running into possible threading issues with libgbm. */
+                    let mut damage = Vec::from(damaged_intervals);
+                    if let Some(trailing) = damage.last_mut() {
+                        trailing.1 = trailing.1.min(nominal_size);
+                    }
+                    let copy_size = damage.iter().map(|intv| intv.1 - intv.0).sum();
+                    let mut v = AlignedArray::new(copy_size);
+                    gbm_buf.copy_from_dmabuf(data.view_row_stride, v.get_mut(), &damage[..])?;
+                    Some(Arc::new(v))
+                } else {
+                    None
+                };
+
                 // Then make diff tasks that copy the _bound_ of the slice ,
                 // and run the diff routine inside it (against the mirror)
                 // via diff_two
                 let (trail_len, parts) = split_damage(damaged_intervals, nominal_size);
                 let nparts = parts.len();
 
+                let mut output_copy_start = 0;
                 for (i, output) in parts.into_iter().enumerate() {
                     /* Note: this uses the property that the intervals are disjoint and provided
                      * in ascending order */
@@ -2493,6 +2516,11 @@ fn collect_updates(
                     } else {
                         0
                     };
+                    let part_src_len = trailing as usize
+                        + output
+                            .iter()
+                            .map(|intv| (intv.1 - intv.0) as usize)
+                            .sum::<usize>();
 
                     let t = match data.buf {
                         DmabufImpl::Vulkan(ref vulk_buf) => {
@@ -2516,9 +2544,25 @@ fn collect_updates(
                                 },
                             })
                         }
-                        DmabufImpl::Gbm(_) => todo!(),
+                        DmabufImpl::Gbm(_) => WorkTask::DiffDmabuf2(DiffDmabufTask2 {
+                            rid: sfd.remote_id,
+                            compression,
+                            region,
+                            intervals: output,
+                            trailing,
+                            wait_until: 0,
+                            read_buf: ReadDmabufResult::Shm((
+                                copied.as_ref().unwrap().clone(),
+                                output_copy_start,
+                                output_copy_start + part_src_len,
+                            )),
+                            mirror: data.mirror.as_ref().unwrap().clone(),
+                            nominal_size,
+                        }),
                     };
                     way_msg_output.expected_recvd_msgs += 1;
+
+                    output_copy_start += part_src_len;
 
                     let mut g = tasksys.tasks.lock().unwrap();
                     if must_poll {
@@ -2808,7 +2852,7 @@ fn diff_dmabuf_inner(task: &DiffDmabufTask2, dst: &mut [u8]) -> Result<(u32, u32
             buf.prepare_read()?;
             buf.get_read_view().data
         }
-        ReadDmabufResult::Shm(ref v) => &v[..],
+        ReadDmabufResult::Shm((ref v, start, end)) => &v.get()[start..end],
     };
 
     let mut dst_view = dst;
@@ -3095,7 +3139,7 @@ fn run_dmabuf_fill_task_2(task: FillDmabufTask2, cache: &mut ThreadCache) -> Tas
             buf.prepare_read()?;
             buf.get_read_view().data
         }
-        ReadDmabufResult::Shm(ref v) => &v[..],
+        ReadDmabufResult::Shm((ref v, start, end)) => &v.get()[start..end],
     };
 
     // TODO: parallelizable sub tasks, after 'prepare_read' is done: compress staging buffer (critical path),

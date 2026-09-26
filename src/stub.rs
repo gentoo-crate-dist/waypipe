@@ -277,6 +277,7 @@ mod gbm_stub {
             &mut self,
             view_row_stride: Option<u32>,
             data: &mut [u8],
+            segments: &[(usize, usize)],
         ) -> Result<(), String> {
             unreachable!();
         }

@@ -339,10 +339,6 @@ fn build_connection_command<'a>(
     if anti_staircase {
         args.push(OsStr::new("--anti-staircase"));
     }
-    if let Some(ref path) = options.debug_store_video {
-        args.push(OsStr::new("--test-store-video"));
-        args.push(path.as_os_str());
-    }
     if options.test_skip_vulkan {
         args.push(OsStr::new("--test-skip-vulkan"));
     }
@@ -2312,7 +2308,6 @@ fn main() -> Result<ExitCode, String> {
     let fast_bench = *matches.get_one::<bool>("test-fast-bench").unwrap();
     let use_xwls = *matches.get_one::<bool>("xwls").unwrap();
     let test_wire_version: Option<u32> = matches.get_one::<u32>("test-wire-version").copied();
-    let test_store_video: Option<PathBuf> = matches.get_one::<PathBuf>("test-store-video").cloned();
     let test_skip_vulkan: bool = *matches.get_one::<bool>("test-skip-vulkan").unwrap();
     let test_no_timeline_export: bool =
         *matches.get_one::<bool>("test-no-timeline-export").unwrap();
@@ -2395,7 +2390,6 @@ fn main() -> Result<ExitCode, String> {
         threads: *threads,
         title_prefix: (*title_prefix).clone(),
         drm_node: drm_node.cloned(),
-        debug_store_video: test_store_video,
         test_skip_vulkan,
         test_no_timeline_export,
         test_no_binary_semaphore_import,

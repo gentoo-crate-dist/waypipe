@@ -1804,21 +1804,6 @@ fn process_sfd_msg(
                 ));
             };
 
-            if let Some(ref folder) = glob.opts.debug_store_video {
-                /* Debug option: all received video packets */
-                let mut full_path = folder.clone();
-                let filename = format!("packets-{}-{}", unistd::getpid(), remote_id);
-                full_path.push(std::ffi::OsStr::new(&filename));
-                let mut logfile = std::fs::File::options()
-                    .create(true)
-                    .append(true)
-                    .open(full_path)
-                    .unwrap();
-                let packet = &msg[8..];
-                use std::io::Write;
-                logfile.write_all(packet).unwrap();
-            }
-
             let DmabufDevice::Vulkan((_, ref vulk)) = glob.dmabuf_device else {
                 unreachable!();
             };
@@ -5664,8 +5649,6 @@ pub struct Options {
     pub no_gpu: bool,
     /* The drm render node to use (if the Wayland compositor does not specify a specific node) */
     pub drm_node: Option<PathBuf>,
-    /** If nonzero, path to a folder in which all received video streams will be stored */
-    pub debug_store_video: Option<PathBuf>,
     /** If true, make vulkan initialization fail so that gbm fallback will be tried if available */
     pub test_skip_vulkan: bool,
     /** If true, assume the platform does not support timeline semaphore importing/exporting */

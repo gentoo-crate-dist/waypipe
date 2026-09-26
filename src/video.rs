@@ -276,7 +276,8 @@ impl Drop for VideoEncodeState {
 }
 
 impl VulkanDecodeOpHandle {
-    /* Not recommended in general -- blocks the thread. Returns true if point reached. */
+    /** Test helper. Not recommended in general -- blocks the thread.
+     * Returns true if point reached. */
     #[cfg(test)]
     pub fn wait_until_done(self: &VulkanDecodeOpHandle) -> Result<(), String> {
         self.decode

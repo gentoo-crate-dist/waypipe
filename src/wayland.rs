@@ -2,9 +2,10 @@
 /*! Types and basic parsing/writing code for Wayland protocol */
 use crate::wayland_gen::{WaylandInterface, INTERFACE_TABLE};
 
+/** Generic error message for parsing, to keep parsing logic reasonably simple */
 pub const PARSE_ERROR: &str = "Failed to parse message";
 
-/* Wayland object Id. The null object 0 is not special cased and may require checking. */
+/** Wayland object Id. The null object 0 is not special cased and may require checking. */
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
 #[repr(transparent)]
 pub struct ObjId(pub u32);
@@ -27,9 +28,14 @@ pub enum WaylandArgument {
     Array,
     Fd,
 }
+
+/** Data for a Wayland event or request on an object. */
 pub struct WaylandMethod {
+    /** For debug output */
     pub name: &'static str,
+    /** Method arguments, in order */
     pub sig: &'static [WaylandArgument],
+    /** Whether this destroys the object */
     pub destructor: bool,
 }
 // TODO: memory layout optimizations. As with the C implementation, could
@@ -41,9 +47,13 @@ pub struct WaylandMethod {
 
 /** Data for a Wayland interface. */
 pub struct WaylandData {
+    /** Used to construct globals by type name */
     pub name: &'static str,
+    /** Object events, in opcode order */
     pub evts: &'static [WaylandMethod],
+    /** Object events, in opcode order */
     pub reqs: &'static [WaylandMethod],
+    /** Current available protocol version */
     pub version: u32,
 }
 

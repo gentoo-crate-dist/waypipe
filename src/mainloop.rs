@@ -112,23 +112,26 @@ pub enum DmabufDevice {
 
 /** Most of the state used by the main loop (excluding in progress tasks and read/write buffers) */
 pub struct Globals<'a> {
-    /* Index of ShadowFd by ID; ShadowFds stay alive as long as they have
+    /** Index of ShadowFd by ID; ShadowFds stay alive as long as they have
      * some type of reference by the protocol objects or main code */
     pub map: BTreeMap<Rid, Weak<RefCell<ShadowFd>>>,
-    /* Newly created objects which have are waiting for RID->SFD translation */
+    /** Newly created objects which have are waiting for RID->SFD translation */
     fresh: BTreeMap<Rid, Rc<RefCell<ShadowFd>>>,
-    /* Keep pipes alive until no more progress feasible */
+    /** Keep pipes alive until no more progress feasible */
     pipes: Vec<Rc<RefCell<ShadowFd>>>,
 
+    /** Iff true, this is the waypipe client instance connecting to the Wayland compositor */
     pub on_display_side: bool,
+    /** Next ID to use for a new ShadowFd; negative iff on_display_side */
     pub max_local_id: i32,
 
-    /* Vulkan instance and other data; lazily loaded after client binds linux-dmabuf-v1 */
+    /** Vulkan instance and other data; lazily loaded after client binds linux-dmabuf-v1 */
     pub dmabuf_device: DmabufDevice,
 
     // note: slight space/time perf improvement may be possible by using different
     // maps for regular objects (which need only store 1 or 2 bytes/object)
     // and extended objects (which include a Box)
+    /** All Wayland objects that are being tracked */
     pub objects: BTreeMap<ObjId, WpObject>,
     /** Counter to distinguish buffer objects, because ObjIds can be recycled */
     pub max_buffer_uid: u64,
@@ -148,6 +151,7 @@ pub struct Globals<'a> {
      * creates to be safe. */
     pub screencopy_restrictions: BTreeMap<u32, Vec<u64>>,
 
+    /** Options. */
     pub opts: &'a Options,
 
     /* Waypipe communication protocol version. For waypipe-client, this is fixed;

@@ -205,7 +205,7 @@ struct ObjExtImageCopyCaptureSession {
     dmabuf_device: Option<u64>,
     dmabuf_formats: Vec<(u32, Vec<u64>)>,
     /* The sorted list of format/modifier pairs from the last batch of buffer constraint events */
-    last_format_mod_list: Vec<(u32, u64)>,
+    last_format_mod_list: Option<Arc<Vec<(u32, u64)>>>,
     frame_list: Vec<ObjId>, /* At most one frame _should_ exist at a time */
 }
 
@@ -217,8 +217,9 @@ struct ObjExtImageCopyCaptureFrame {
     /** This is reset to None when the parent session is destroyed. */
     capture_session: Option<ObjId>,
 
-    /** If the parent session is destroyed, retain the last list of suppported modifiers here. */
-    supported_modifiers: Vec<(u32, u64)>,
+    /** If the parent session is destroyed, retain the last list of suppported modifiers,
+     * here, if there were any. */
+    supported_modifiers: Option<Arc<Vec<(u32, u64)>>>,
 }
 
 /** Additional information for zwlr_gamma_control_v1 */
@@ -3438,7 +3439,7 @@ pub fn process_way_msg(
                         ObjExtImageCopyCaptureSession {
                             dmabuf_device: None,
                             dmabuf_formats: Vec::new(),
-                            last_format_mod_list: Vec::new(),
+                            last_format_mod_list: None,
                             frame_list: Vec::new(),
                         },
                     )),
@@ -3463,7 +3464,7 @@ pub fn process_way_msg(
                         ObjExtImageCopyCaptureSession {
                             dmabuf_device: None,
                             dmabuf_formats: Vec::new(),
-                            last_format_mod_list: Vec::new(),
+                            last_format_mod_list: None,
                             frame_list: Vec::new(),
                         },
                     )),
@@ -3639,7 +3640,7 @@ pub fn process_way_msg(
                     }
                 }
                 format_mod_list.sort_unstable();
-                session.last_format_mod_list = format_mod_list;
+                session.last_format_mod_list = Some(Arc::new(format_mod_list));
 
                 if glob.on_display_side {
                     for (fmt, mods) in session.dmabuf_formats.iter() {
@@ -3647,7 +3648,7 @@ pub fn process_way_msg(
                     }
                 }
             } else {
-                session.last_format_mod_list = Vec::new();
+                session.last_format_mod_list = None;
             }
             write_evt_ext_image_copy_capture_session_v1_done(dst, object_id);
 
@@ -3871,16 +3872,21 @@ pub fn process_way_msg(
                 };
 
                 if let Some(pair) = fmtmod {
-                    let err = if let Some(session_id) = frame.capture_session {
+                    let modifiers = if let Some(session_id) = frame.capture_session {
                         let object = glob.objects.get_mut(&session_id).unwrap();
                         let WpExtra::ExtImageCopyCaptureSession(ref session) = object.extra else {
                             return Err(tag!("Object produced through unexpected method, missing associated state"));
                         };
-                        session.last_format_mod_list.binary_search(&pair).is_err()
+                        &session.last_format_mod_list
                     } else {
-                        frame.supported_modifiers.binary_search(&pair).is_err()
+                        &frame.supported_modifiers
                     };
-                    if err {
+                    if modifiers
+                        .as_ref()
+                        .map_or(&[] as &[(u32, u64)], |l| l.as_slice())
+                        .binary_search(&pair)
+                        .is_err()
+                    {
                         error!("A wl_buffer Waypipe created with (format, modifier) = (0x{:08x},0x{:016x}) \
                             is being submitted to ext_image_copy_capture_frame_v1#{}, whose parent ext_image_copy_capture_session_v1's \
                             most recent update did not include the (format, modifier) combination. This may be a known Waypipe issue.",

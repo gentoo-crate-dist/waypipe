@@ -513,7 +513,7 @@ fn set_context_extensions(
                     bindings.av_free(dev_exts.add(j) as _);
                 }
                 for j in 0..instance_exts.len() {
-                    bindings.av_free(dev_exts.add(j) as _);
+                    bindings.av_free(inst_exts.add(j) as _);
                 }
                 bindings.av_free(inst_exts as _);
                 bindings.av_free(dev_exts as _);

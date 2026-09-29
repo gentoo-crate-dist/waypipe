@@ -304,8 +304,11 @@ unsafe fn strlen(s: *const c_char) -> usize {
 
 fn av_strerror<'a>(bindings: &ffmpeg, err_buf: &'a mut [u8], ret: c_int) -> &'a str {
     unsafe {
-        // SAFETY: av_strerror null-terminates, sizeof(u8) = sizeof(char), todo
-        if bindings.av_strerror(ret, err_buf.as_mut_ptr() as *mut c_char, err_buf.len()) == 0 {
+        // SAFETY:
+        // - av_strerror only writes within the input buffer and does not
+        //   retain a reference to it
+        // - u8 and c_char are plain data of the same size/alignment
+        if bindings.av_strerror(ret, err_buf.as_mut_ptr().cast::<c_char>(), err_buf.len()) == 0 {
             std::str::from_utf8(&err_buf[..err_buf.iter().position(|x| *x == 0).unwrap()]).unwrap()
         } else {
             "unknown error"
@@ -3141,14 +3144,16 @@ pub fn start_dmavid_encode_sw(
         (*frame).data[1] = view_u.data.as_ptr() as *mut u8;
         (*frame).data[2] = view_v.data.as_ptr() as *mut u8;
 
-        // TODO: refcounting frame may avoid ffmpeg-side copies?
+        /* Because the frame is not refcounted, this may copy the frame
+         * contents, which can be somewhat inefficient. TODO: use
+         * reference counting and allocate buffers from larger pools */
         avcodec_send_frame(&video.bindings, enc_inner.ctx, frame)?;
 
         let mut packet: *mut AVPacket = video.bindings.av_packet_alloc();
 
         avcodec_receive_packet(&video.bindings, enc_inner.ctx, packet)?;
 
-        /* Keep frame data alive until processing is done? TODO: what does ffmpeg require? It might want to hold onto the frame a bit longer */
+        /* Technically these could be dropped at `avcodec_send_frame` */
         drop(view_y);
         drop(view_u);
         drop(view_v);

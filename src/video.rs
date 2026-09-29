@@ -1294,6 +1294,44 @@ pub fn supports_video_format(
     }
 }
 
+struct FrameLock<'a> {
+    avvulk: *mut AVVulkanFramesContext,
+    vkframe: &'a mut AVVkFrame,
+    hwfc_ctx: &'a mut AVHWFramesContext,
+}
+
+impl<'a> FrameLock<'a> {
+    unsafe fn lock(
+        avvulk: *mut AVVulkanFramesContext,
+        hwfc_ctx: &'a mut AVHWFramesContext,
+        vkframe: &'a mut AVVkFrame,
+    ) -> FrameLock<'a> {
+        let s = Self {
+            avvulk,
+            vkframe,
+            hwfc_ctx,
+        };
+
+        let avvulk = s.avvulk.as_mut().unwrap();
+        avvulk.lock_frame.as_ref().unwrap()(s.hwfc_ctx, s.vkframe);
+
+        s
+    }
+
+    fn get_vkframe(&mut self) -> &mut AVVkFrame {
+        self.vkframe
+    }
+}
+
+impl<'a> Drop for FrameLock<'a> {
+    fn drop(&mut self) {
+        unsafe {
+            let avvulk = self.avvulk.as_mut().unwrap();
+            avvulk.unlock_frame.as_ref().unwrap()(self.hwfc_ctx, self.vkframe);
+        }
+    }
+}
+
 /* YUV to RGB conversion matrices. For compatibility with original Waypipe,
  * broadcast-limited output ranges (16-235 & 16-240, not 0-255) are used, and
  * Rec. 601 (where Y = 0.299 R + 0.587 G + 0.114 B, instead of
@@ -1353,22 +1391,22 @@ pub fn start_dmavid_decode_hw(
         let hw_fr_ref = (*frame).hw_frames_ctx.as_ref().unwrap();
         let hwfc_ref = hw_fr_ref.data.cast::<AVHWFramesContext>().as_mut().unwrap();
 
-        let avvulk = hwfc_ref
-            .hwctx
-            .cast::<AVVulkanFramesContext>()
-            .as_mut()
-            .unwrap();
+        let avvulk = hwfc_ref.hwctx.cast::<AVVulkanFramesContext>();
         let vkframe = ((*frame).data[0]).cast::<AVVkFrame>().as_mut().unwrap();
 
+        assert!(
+            avvulk.as_ref().unwrap().format[0]
+                == (vk::Format::G8_B8R8_2PLANE_420_UNORM.as_raw() as u32)
+        );
+
         /* Lock frame while recording command buffer */
-        avvulk.lock_frame.as_ref().unwrap()(hwfc_ref, vkframe);
+        let mut lock = FrameLock::lock(avvulk, hwfc_ref, vkframe);
+        let vkframe = lock.get_vkframe();
 
         /* Assert single image output */
         assert!(vkframe.img[1..]
             .iter()
             .all(|x| vk::Image::from_raw(*x as _).is_null()));
-
-        assert!(avvulk.format[0] == (vk::Format::G8_B8R8_2PLANE_420_UNORM.as_raw() as u32));
 
         let wait_sems = &[vk::Semaphore::from_raw(vkframe.sem[0] as _)];
         let wait_values = &[vkframe.sem_value[0]];
@@ -1677,7 +1715,7 @@ pub fn start_dmavid_decode_hw(
         /* Unlock frame, now that command is submitted. (Note: unlocking before
          * submission could risk timeline semaphore value updates and monotonicity
          * violations */
-        avvulk.unlock_frame.as_ref().unwrap()(hwfc_ref, vkframe);
+        drop(lock);
 
         let mut av_packet_ref = av_packet;
         video
@@ -2339,16 +2377,18 @@ pub fn start_dmavid_encode_hw(
         }
         let hw_fr_ref = (*frame).hw_frames_ctx.as_ref().unwrap();
         let hwfc_ref = hw_fr_ref.data.cast::<AVHWFramesContext>().as_mut().unwrap();
-        let vk_fc = hwfc_ref
-            .hwctx
-            .cast::<AVVulkanFramesContext>()
-            .as_mut()
-            .unwrap();
+        let vk_fc = hwfc_ref.hwctx.cast::<AVVulkanFramesContext>();
+        assert!(
+            vk_fc.as_ref().unwrap().format[0] == vk::Format::G8_B8R8_2PLANE_420_UNORM.as_raw() as _
+        );
+
+        let (fc_width, fc_height) = (hwfc_ref.width, hwfc_ref.height);
+
         let vkframe = ((*frame).data[0]).cast::<AVVkFrame>().as_mut().unwrap();
         /* Lock frame, to prevent concurrent modifications */
-        vk_fc.lock_frame.as_ref().unwrap()(hwfc_ref, vkframe);
+        let mut lock = FrameLock::lock(vk_fc, hwfc_ref, vkframe);
+        let vkframe = lock.get_vkframe();
 
-        assert!(vk_fc.format[0] == vk::Format::G8_B8R8_2PLANE_420_UNORM.as_raw() as _);
         assert!(vkframe.img[1..]
             .iter()
             .all(|x| vk::Image::from_raw(*x as _).is_null()));
@@ -2521,10 +2561,10 @@ pub fn start_dmavid_encode_hw(
             &push_u8,
         );
         /* Fill every pixel of the Y and CbCr planes */
-        assert!(hwfc_ref.width % 16 == 0);
-        assert!(hwfc_ref.height % 16 == 0);
-        let xgroups = (hwfc_ref.width / 16) as u32;
-        let ygroups = (hwfc_ref.height / 16) as u32;
+        assert!(fc_width % 16 == 0);
+        assert!(fc_height % 16 == 0);
+        let xgroups = (fc_width / 16) as u32;
+        let ygroups = (fc_height / 16) as u32;
         vulk.dev.cmd_dispatch(cb, xgroups, ygroups, 1);
 
         let exit_barriers = &[qfot_release_image_memory_barrier(
@@ -2593,8 +2633,8 @@ pub fn start_dmavid_encode_hw(
             dst_subresource: subresource_layer(vk::ImageAspectFlags::PLANE_0),
             dst_offset: vk::Offset3D::default(),
             extent: vk::Extent3D {
-                width: hwfc_ref.width as u32,
-                height: hwfc_ref.height as u32,
+                width: fc_width as u32,
+                height: fc_height as u32,
                 depth: 1,
             },
         }];
@@ -2604,8 +2644,8 @@ pub fn start_dmavid_encode_hw(
             dst_subresource: subresource_layer(vk::ImageAspectFlags::PLANE_1),
             dst_offset: vk::Offset3D::default(),
             extent: vk::Extent3D {
-                width: (hwfc_ref.width as u32) / 2,
-                height: (hwfc_ref.height as u32) / 2,
+                width: (fc_width as u32) / 2,
+                height: (fc_height as u32) / 2,
                 depth: 1,
             },
         }];
@@ -2664,7 +2704,7 @@ pub fn start_dmavid_encode_hw(
         /* Unlock frame, now that command is submitted. (Note: unlocking before
          * submission could risk timeline semaphore value updates and monotonicity
          * violations */
-        vk_fc.unlock_frame.as_ref().unwrap()(hwfc_ref, vkframe);
+        drop(lock);
 
         avcodec_send_frame(&video.bindings, enc_inner.ctx, frame)?;
 

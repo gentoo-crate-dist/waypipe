@@ -666,8 +666,6 @@ pub unsafe fn setup_video(
 
         set_context_extensions(&lib, ctx, device_exts, instance_exts)?;
 
-        /* Note: the queue_family_indices are deprecated and will be replaced
-         * by `.qf`/`.nb_qf` */
         for (i, (flags, codec_ops, index, nbound)) in queue_info.iter().enumerate() {
             let Some(qf) = ctx.qf.get_mut(i) else {
                 continue;

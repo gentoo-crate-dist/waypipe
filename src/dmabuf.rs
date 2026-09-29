@@ -1438,11 +1438,16 @@ pub fn setup_vulkan_device_base(
                 return Err(tag!("No video decode queue available"));
             }
 
-            let mut all_queues = vid_queues;
-            all_queues.insert(0, queue_family);
-            all_queues.insert(0, gt);
-            all_queues.sort_unstable();
-            all_queues.dedup();
+            let mut all_queues = vec![queue_family];
+            if gt != queue_family {
+                all_queues.push(gt);
+            }
+            for queue in vid_queues {
+                if queue != queue_family && queue != gt {
+                    all_queues.push(queue);
+                }
+            }
+
             all_queues
         } else {
             vec![queue_family]

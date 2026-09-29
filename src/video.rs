@@ -964,6 +964,28 @@ fn create_staging_images(
     let mut plane_memories = [vk::DeviceMemory::null(); 2];
     let mut plane_image_views = [vk::ImageView::null(); 2];
 
+    let cleanup = |plane_image_views: [vk::ImageView; 2],
+                   plane_images: [vk::Image; 2],
+                   plane_memories: [vk::DeviceMemory; 2]| {
+        unsafe {
+            for view in plane_image_views {
+                if !view.is_null() {
+                    vulk.dev.destroy_image_view(view, None);
+                }
+            }
+            for img in plane_images {
+                if !img.is_null() {
+                    vulk.dev.destroy_image(img, None);
+                }
+            }
+            for mem in plane_memories {
+                if !mem.is_null() {
+                    vulk.dev.free_memory(mem, None);
+                }
+            }
+        }
+    };
+
     unsafe {
         for plane in 0..=1 {
             let image_info = vk::ImageCreateInfo::default()
@@ -987,12 +1009,19 @@ fn create_staging_images(
                 .sharing_mode(vk::SharingMode::EXCLUSIVE)
                 .initial_layout(vk::ImageLayout::UNDEFINED);
 
-            let image = vulk
-                .dev
-                .create_image(&image_info, None)
-                .map_err(|x| tag!("Failed to create Vulkan image: {:?}", x))?;
+            plane_images[plane] = match vulk.dev.create_image(&image_info, None) {
+                Ok(img) => img,
+                Err(x) => {
+                    cleanup(plane_image_views, plane_images, plane_memories);
+                    return Err(tag!(
+                        "Failed to create plane {} Vulkan image: {:?}",
+                        plane,
+                        x
+                    ));
+                }
+            };
 
-            let mem_reqs = vulk.dev.get_image_memory_requirements(image);
+            let mem_reqs = vulk.dev.get_image_memory_requirements(plane_images[plane]);
 
             assert!(mem_reqs.memory_type_bits != 0);
             let mem_index = mem_reqs.memory_type_bits.trailing_zeros();
@@ -1000,18 +1029,29 @@ fn create_staging_images(
             let alloc_info = vk::MemoryAllocateInfo::default()
                 .allocation_size(mem_reqs.size)
                 .memory_type_index(mem_index);
-            let memory = vulk
-                .dev
-                .allocate_memory(&alloc_info, None)
-                .map_err(|x| tag!("Failed to allocate image memory: {:?}", x))?;
+            plane_memories[plane] = match vulk.dev.allocate_memory(&alloc_info, None) {
+                Ok(mem) => mem,
+                Err(x) => {
+                    cleanup(plane_image_views, plane_images, plane_memories);
+                    return Err(tag!(
+                        "Failed to allocate plane {} image memory: {:?}",
+                        plane,
+                        x
+                    ))?;
+                }
+            };
 
-            vulk.dev
-                .bind_image_memory(image, memory, 0)
-                .map_err(|x| tag!("Failed to bind image memory: {:?}", x))?;
+            if let Err(x) =
+                vulk.dev
+                    .bind_image_memory(plane_images[plane], plane_memories[plane], 0)
+            {
+                cleanup(plane_image_views, plane_images, plane_memories);
+                return Err(tag!("Failed to bind plane {} image memory: {:?}", plane, x))?;
+            }
 
             let image_view_info = vk::ImageViewCreateInfo::default()
                 .flags(vk::ImageViewCreateFlags::empty())
-                .image(image)
+                .image(plane_images[plane])
                 .view_type(vk::ImageViewType::TYPE_2D)
                 .format(planes[plane].0)
                 .components(vk::ComponentMapping::default().r(vk::ComponentSwizzle::IDENTITY))
@@ -1023,14 +1063,13 @@ fn create_staging_images(
                         .base_array_layer(0)
                         .layer_count(1),
                 );
-            let image_view = vulk
-                .dev
-                .create_image_view(&image_view_info, None)
-                .map_err(|_| "Failed to create plane 1 image view")?;
-
-            plane_images[plane] = image;
-            plane_memories[plane] = memory;
-            plane_image_views[plane] = image_view;
+            plane_image_views[plane] = match vulk.dev.create_image_view(&image_view_info, None) {
+                Ok(mem) => mem,
+                Err(x) => {
+                    cleanup(plane_image_views, plane_images, plane_memories);
+                    return Err(tag!("Failed to create plane {} image view: {:?}", plane, x))?;
+                }
+            };
         }
 
         Ok(VideoHWStagingImages {

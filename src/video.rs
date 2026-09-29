@@ -188,6 +188,7 @@ unsafe impl Send for VideoDecodeInner {}
  * is the owner's responsibility.
  */
 struct VideoHWStagingImages {
+    main_size: (u32, u32),
     plane_memories: [vk::DeviceMemory; 2],
     plane_images: [vk::Image; 2],
     plane_image_views: [vk::ImageView; 2],
@@ -1033,6 +1034,7 @@ fn create_staging_images(
         }
 
         Ok(VideoHWStagingImages {
+            main_size: (width, height),
             plane_memories,
             plane_images,
             plane_image_views,
@@ -1386,7 +1388,19 @@ pub fn start_dmavid_decode_hw(
             (*frame).width.try_into().unwrap(),
             (*frame).height.try_into().unwrap(),
         );
-        assert!(frame_width >= state.target.width && frame_height >= state.target.height);
+        assert!(frame_width % 2 == 0 && frame_height % 2 == 0);
+
+        // Permit arbitrary sizes larger than the actual image size, in case
+        // video encoding constraints get relaxed in the future.
+        if frame_width < state.target.width || frame_height < state.target.height {
+            return Err(tag!(
+                "Stream image size {}x{} is too small (< {}x{})",
+                frame_width,
+                frame_height,
+                state.target.width,
+                state.target.height
+            ));
+        }
 
         let hw_fr_ref = (*frame).hw_frames_ctx.as_ref().unwrap();
         let hwfc_ref = hw_fr_ref.data.cast::<AVHWFramesContext>().as_mut().unwrap();
@@ -1524,7 +1538,8 @@ pub fn start_dmavid_decode_hw(
             pre_transfer_barriers,
         );
         /* Transition the staging images from undefined, discarding their previous
-         * contents; the images will be entirely filled by the following copy operations. */
+         * contents; the parts of the images used will entirely filled by the
+         * following copy operations. */
         let pre_transfer_barriers2 = &[
             image_layout_transition(
                 state_data.plane_images[0],
@@ -1557,8 +1572,8 @@ pub fn start_dmavid_decode_hw(
             dst_subresource: subresource_layer(vk::ImageAspectFlags::COLOR),
             dst_offset: vk::Offset3D::default(),
             extent: vk::Extent3D {
-                width: frame_width,
-                height: frame_height,
+                width: frame_width.min(state_data.main_size.0),
+                height: frame_height.min(state_data.main_size.1),
                 depth: 1,
             },
         }];
@@ -1568,8 +1583,8 @@ pub fn start_dmavid_decode_hw(
             dst_subresource: subresource_layer(vk::ImageAspectFlags::COLOR),
             dst_offset: vk::Offset3D::default(),
             extent: vk::Extent3D {
-                width: frame_width / 2,
-                height: frame_height / 2,
+                width: frame_width.min(state_data.main_size.0) / 2,
+                height: frame_height.min(state_data.main_size.1) / 2,
                 depth: 1,
             },
         }];
@@ -1769,26 +1784,43 @@ pub fn start_dmavid_decode_sw(
 
         avcodec_receive_frame(&video.bindings, dec_inner.ctx, frame)?;
 
-        let ext_w = (*dec_inner.ctx).width as usize;
-        let ext_h = (*dec_inner.ctx).height as usize;
-        assert!(ext_w % 2 == 0 && ext_h % 2 == 0);
+        let frame_width = u32::try_from((*frame).width).unwrap();
+        let frame_height = u32::try_from((*frame).height).unwrap();
+        assert!(frame_width % 2 == 0 && frame_height % 2 == 0);
 
-        let ystride = (*frame).linesize[0] as usize;
-        let ustride = (*frame).linesize[1] as usize;
-        let vstride = (*frame).linesize[2] as usize;
+        if frame_width < 8 * state.target.width.div_ceil(8)
+            || frame_height < 8 * state.target.height.div_ceil(8)
+        {
+            return Err(tag!(
+                "Stream image size {}x{} is too small (< {}x{} input size for yuv conversion)",
+                frame_width,
+                frame_height,
+                8 * state.target.width.div_ceil(8),
+                8 * state.target.height.div_ceil(8)
+            ));
+        }
 
-        let buf_y = vulkan_get_buffer(&state.target.vulk, ystride * ext_h, true)?;
-        let buf_u = vulkan_get_buffer(&state.target.vulk, ustride * (ext_h / 2), true)?;
-        let buf_v = vulkan_get_buffer(&state.target.vulk, vstride * (ext_h / 2), true)?;
+        let stride_y = (*frame).linesize[0] as usize;
+        let stride_u = (*frame).linesize[1] as usize;
+        let stride_v = (*frame).linesize[2] as usize;
+
+        let size_y = stride_y.checked_mul(frame_height as usize).unwrap();
+        let size_u = stride_u.checked_mul(frame_height as usize / 2).unwrap();
+        let size_v = stride_v.checked_mul(frame_height as usize / 2).unwrap();
+
+        let buf_y = vulkan_get_buffer(&state.target.vulk, size_y, true)?;
+        let buf_u = vulkan_get_buffer(&state.target.vulk, size_u, true)?;
+        let buf_v = vulkan_get_buffer(&state.target.vulk, size_v, true)?;
         let view_y = buf_y.get_write_view();
         let view_u = buf_u.get_write_view();
         let view_v = buf_v.get_write_view();
 
         {
             // TODO: avoid this copy by implementing AVCodecContext.get_buffer2
-            let ydata: &[u8] = &*slice_from_raw_parts((*frame).data[0], ystride * ext_h);
-            let udata: &[u8] = &*slice_from_raw_parts((*frame).data[1], ustride * (ext_h / 2));
-            let vdata: &[u8] = &*slice_from_raw_parts((*frame).data[2], vstride * (ext_h / 2));
+            // (all decoders used support AV_CODEC_CAP_DR1)
+            let ydata: &[u8] = &*slice_from_raw_parts((*frame).data[0], size_y);
+            let udata: &[u8] = &*slice_from_raw_parts((*frame).data[1], size_u);
+            let vdata: &[u8] = &*slice_from_raw_parts((*frame).data[2], size_v);
 
             view_y.data.copy_from_slice(ydata);
             view_u.data.copy_from_slice(udata);
@@ -1982,9 +2014,9 @@ pub fn start_dmavid_decode_sw(
         let push_u8_mtx = pack_glsl_mat3x4(YUV_TO_RGB);
         let mut push_u8: [u8; 60] = [0; 60];
         push_u8[..48].copy_from_slice(&push_u8_mtx);
-        push_u8[48..52].copy_from_slice(&(ystride as i32).to_le_bytes());
-        push_u8[52..56].copy_from_slice(&(ustride as i32).to_le_bytes());
-        push_u8[56..60].copy_from_slice(&(vstride as i32).to_le_bytes());
+        push_u8[48..52].copy_from_slice(&(stride_y as i32).to_le_bytes());
+        push_u8[52..56].copy_from_slice(&(stride_u as i32).to_le_bytes());
+        push_u8[56..60].copy_from_slice(&(stride_v as i32).to_le_bytes());
         vulk.dev.cmd_push_constants(
             cb,
             video.yuv420_buf_to_rgb.pipeline_layout,
@@ -2382,7 +2414,11 @@ pub fn start_dmavid_encode_hw(
             vk_fc.as_ref().unwrap().format[0] == vk::Format::G8_B8R8_2PLANE_420_UNORM.as_raw() as _
         );
 
-        let (fc_width, fc_height) = (hwfc_ref.width, hwfc_ref.height);
+        let (fc_width, fc_height): (u32, u32) = (
+            hwfc_ref.width.try_into().unwrap(),
+            hwfc_ref.height.try_into().unwrap(),
+        );
+        assert!((fc_width, fc_height) == state_data.main_size);
 
         let vkframe = ((*frame).data[0]).cast::<AVVkFrame>().as_mut().unwrap();
         /* Lock frame, to prevent concurrent modifications */
@@ -2563,8 +2599,8 @@ pub fn start_dmavid_encode_hw(
         /* Fill every pixel of the Y and CbCr planes */
         assert!(fc_width % 16 == 0);
         assert!(fc_height % 16 == 0);
-        let xgroups = (fc_width / 16) as u32;
-        let ygroups = (fc_height / 16) as u32;
+        let xgroups = fc_width / 16;
+        let ygroups = fc_height / 16;
         vulk.dev.cmd_dispatch(cb, xgroups, ygroups, 1);
 
         let exit_barriers = &[qfot_release_image_memory_barrier(
@@ -2633,8 +2669,8 @@ pub fn start_dmavid_encode_hw(
             dst_subresource: subresource_layer(vk::ImageAspectFlags::PLANE_0),
             dst_offset: vk::Offset3D::default(),
             extent: vk::Extent3D {
-                width: fc_width as u32,
-                height: fc_height as u32,
+                width: fc_width,
+                height: fc_height,
                 depth: 1,
             },
         }];
@@ -2644,8 +2680,8 @@ pub fn start_dmavid_encode_hw(
             dst_subresource: subresource_layer(vk::ImageAspectFlags::PLANE_1),
             dst_offset: vk::Offset3D::default(),
             extent: vk::Extent3D {
-                width: (fc_width as u32) / 2,
-                height: (fc_height as u32) / 2,
+                width: fc_width / 2,
+                height: fc_height / 2,
                 depth: 1,
             },
         }];

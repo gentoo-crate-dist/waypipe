@@ -665,6 +665,8 @@ struct WaypipeOptions<'a> {
     device_type: RenderDeviceType,
     video: VideoSetting,
     title_prefix: &'a str,
+    app_id: &'a str,
+    app_id_prefix: &'a str,
     compression: Compression,
 }
 
@@ -687,6 +689,12 @@ fn build_arguments(waypipe_bin: &OsStr, opts: &WaypipeOptions, is_client: bool) 
     v.push(format!("--compress={}", opts.compression));
     if !opts.title_prefix.is_empty() {
         v.push(format!("--title-prefix={}", opts.title_prefix));
+    }
+    if !opts.app_id.is_empty() {
+        v.push(format!("--app-id={}", opts.app_id));
+    }
+    if !opts.app_id_prefix.is_empty() {
+        v.push(format!("--app-id-prefix={}", opts.app_id_prefix));
     }
     if let Some(device_id) = opts.drm_node {
         v.push(format!("--drm-node=/dev/dri/renderD{}", (device_id & 0xff)));
@@ -810,6 +818,8 @@ fn run_protocol_test_with_drm_node(
         device_type: device.device_type,
         compression: Compression::None,
         title_prefix: "",
+        app_id: "",
+        app_id_prefix: "",
         video: VideoSetting::default(),
     };
     run_protocol_test_with_opts(info, &options, &options, test_fn)
@@ -826,6 +836,8 @@ fn run_protocol_test(
         device_type: RenderDeviceType::Vulkan,
         compression: Compression::None,
         title_prefix: "",
+        app_id: "",
+        app_id_prefix: "",
         video: VideoSetting::default(),
     };
     run_protocol_test_with_opts(info, &options, &options, test_fn)
@@ -1026,6 +1038,8 @@ fn proto_base_wire(info: TestInfo) -> TestResult {
         drm_node: None,
         device_type: RenderDeviceType::Vulkan,
         title_prefix: "",
+        app_id: "",
+        app_id_prefix: "",
         compression: Compression::None,
         video: VideoSetting::default(),
     };
@@ -3075,6 +3089,8 @@ fn proto_dmavid(
             }),
         },
         title_prefix: "",
+        app_id: "",
+        app_id_prefix: "",
         drm_node: Some(device.id),
         device_type: device.device_type,
         wire_version: None,
@@ -4419,6 +4435,8 @@ fn proto_title_prefix(info: TestInfo) -> TestResult {
             device_type: RenderDeviceType::Vulkan,
             video: VideoSetting::default(),
             title_prefix: &prefix,
+            app_id: "",
+            app_id_prefix: "",
             compression: Compression::None,
         };
         run_protocol_test_with_opts(

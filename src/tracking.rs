@@ -4094,6 +4094,25 @@ pub fn process_way_msg(
             write_req_xdg_toplevel_set_title(dst, object_id, &concat);
             Ok(ProcMsg::Done)
         }
+        (WaylandInterface::XdgToplevel, OPCODE_XDG_TOPLEVEL_SET_APP_ID) => {
+            let app_id = parse_req_xdg_toplevel_set_app_id(msg)?;
+            let app_id_val = &glob.opts.app_id;
+            let prefix = glob.opts.app_id_prefix.as_bytes();
+
+            let mut new_app_id: Vec<u8>;
+            if app_id_val.is_empty() {
+                new_app_id = Vec::new();
+                new_app_id.extend_from_slice(prefix);
+                new_app_id.extend_from_slice(app_id);
+            } else {
+                new_app_id = app_id_val.as_bytes().to_vec();
+            }
+            let space_needed = length_req_xdg_toplevel_set_app_id(new_app_id.len());
+            check_space!(space_needed, 0, remaining_space);
+
+            write_req_xdg_toplevel_set_app_id(dst, object_id, &new_app_id);
+            Ok(ProcMsg::Done)
+        }
         (WaylandInterface::XdgToplevelIconV1, OPCODE_XDG_TOPLEVEL_ICON_V1_ADD_BUFFER) => {
             check_space!(msg.len(), 0, remaining_space);
 

@@ -271,7 +271,7 @@ unsafe fn construct_diff_segment_two_avx2(
                 let estoremask = _mm256_cvtepi8_epi64(halfsize);
                 _mm256_maskstore_epi32(
                     /* the overwritten portion gets masked out, but can technically cover _before_ the diff array start. alternatively use _mm256_permutevar8x32_epi32 */
-                    diff.as_mut_ptr().sub(block_shift * 4) as *mut _,
+                    diff.as_mut_ptr().wrapping_sub(block_shift * 4) as *mut _,
                     estoremask,
                     if ncom < 8 { t1 } else { t2 },
                 );

@@ -252,11 +252,13 @@ unsafe fn construct_diff_segment_two_avx2(
                 let merged_mask = _mm256_movemask_epi8(merged) as u32;
                 let part1 = 0b00110011001100110011001100110011;
                 let part2 = !part1;
-                let new_mask =
-                    (((merged_mask & part1) as u64) << 32) | (merged_mask & part2) as u64;
+                let m1 = (merged_mask & part1) | ((merged_mask & part1) << 2);
+                let m2 = (merged_mask & part2) | ((merged_mask & part2) >> 2);
+                let new_mask = ((m1 as u64) << 32) | m2 as u64;
+
                 let ncom = (_tzcnt_u64(!new_mask) >> 2) as usize;
                 trailing_unchanged = (_lzcnt_u64(!new_mask) >> 2) as usize;
-                // */
+
                 _mm256_store_si256(reference.as_mut_ptr().add(64 * i) as *mut _, t1);
                 _mm256_store_si256(reference.as_mut_ptr().add(64 * i + 32) as *mut _, t2);
 
@@ -841,7 +843,7 @@ fn test_buffer_replication() {
 fn test_memory_replication() {
     use crate::util::AlignedArray;
 
-    fn test_pattern(name: &str, diff_start_pos: usize, fill: &dyn Fn(&mut [u8])) {
+    fn test_pattern(name: &str, diff_start_pos: usize, fill: &dyn Fn(&mut [u8])) -> u32 {
         let size = 4096;
         let mut mem_arr = AlignedArray::new(size);
         let mut reference_arr = AlignedArray::new(size);
@@ -860,9 +862,14 @@ fn test_memory_replication() {
 
         let start = std::time::Instant::now();
 
-        let mut diff = vec![0; size + 16];
+        let mut diff_ext = vec![0; size + 80];
+        for (i, x) in diff_ext.iter_mut().enumerate() {
+            *x = i as u8;
+        }
+        let diff = &mut diff_ext[32..size + 48];
+
         let diff_len = construct_diff_segment_two(
-            &mut diff,
+            diff,
             &mem[diff_start_pos..],
             &mut reference[diff_start_pos..],
             diff_start_pos as u32,
@@ -889,6 +896,14 @@ fn test_memory_replication() {
         assert!(copy[diff_start_pos..] == mem[diff_start_pos..]);
         /* Check that reference was updated */
         assert!(reference[diff_start_pos..] == mem[diff_start_pos..]);
+        /* Check for no out of bounds changes (undefined behavior, but this check
+         * is unlikely to be optimized away). */
+        assert!(std::hint::black_box(diff_ext)
+            .iter_mut()
+            .enumerate()
+            .all(|(i, x)| *x == i as u8 || (i >= 32 && i < size + 48)));
+
+        diff_len
     }
 
     test_pattern("no change", 1024, &|_| ());
@@ -915,7 +930,9 @@ fn test_memory_replication() {
         x[1421..2000].fill(1);
     });
 
-    for osc in [1, 7, 63, 64, 65, 127, 128, 129, 255, 256, 257] {
+    for osc in [
+        1, 2, 3, 4, 5, 6, 7, 8, 15, 16, 32, 33, 63, 64, 65, 127, 128, 129, 255, 256, 257,
+    ] {
         let s = format!("alternating {}, with gap", osc);
         test_pattern(&s, 64, &|x| {
             for i in 0..x.len() / (2 * osc) {
@@ -927,5 +944,12 @@ fn test_memory_replication() {
     }
     test_pattern("short start", 0, &|x| {
         x[0..4].fill(1);
+    });
+
+    test_pattern("isolated changes", 0, &|x| {
+        for i in 0..x.len().div_ceil(256) - 1 {
+            let (a, b) = ((i * 33) % 64, (i * 17) % 64);
+            x[256 * i + a.min(b)..256 * i + b.max(a)].fill(0xff);
+        }
     });
 }

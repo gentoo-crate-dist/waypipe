@@ -207,6 +207,11 @@ pub struct VulkanCopyHandle {
     cb: vk::CommandBuffer,
     // on the queue's timeline semaphore
     completion_time_point: u64,
+
+    /* semaphores need to be kept alive until their associated work is done*/
+    _wait_semaphores: Vec<(Arc<VulkanTimelineSemaphore>, u64)>,
+    /* only this copy operation should wait for the binary semaphore */
+    _wait_binary_semaphore: Option<VulkanBinarySemaphore>,
 }
 
 impl Drop for VulkanInstance {
@@ -2816,8 +2821,8 @@ pub fn start_copy_segments_from_dmabuf(
     pool: &Arc<VulkanCommandPool>,
     segments: &[(u32, u32, u32)],
     view_row_length: Option<u32>,
-    wait_semaphores: &[(Arc<VulkanTimelineSemaphore>, u64)],
-    wait_binary_semaphores: &[VulkanBinarySemaphore],
+    wait_semaphores: Vec<(Arc<VulkanTimelineSemaphore>, u64)>,
+    wait_binary_semaphore: Option<VulkanBinarySemaphore>,
 ) -> Result<VulkanCopyHandle, String> {
     // TODO: validate that buffer/dmabuf regions affected are not being used by any other transfer
     // (otherwise callers risk unsoundness)
@@ -2927,7 +2932,7 @@ pub fn start_copy_segments_from_dmabuf(
         let mut waitv_values: Vec<u64> = wait_semaphores.iter().map(|x| x.1).collect();
         let mut waitv_semaphores: Vec<vk::Semaphore> =
             wait_semaphores.iter().map(|x| x.0.semaphore).collect();
-        for bs in wait_binary_semaphores {
+        if let Some(bs) = &wait_binary_semaphore {
             /* Wait values for non-timeline semaphores are ignored */
             waitv_values.push(u64::MAX);
             waitv_semaphores.push(bs.semaphore);
@@ -2963,6 +2968,8 @@ pub fn start_copy_segments_from_dmabuf(
             pool: pool.clone(),
             cb,
             completion_time_point,
+            _wait_semaphores: wait_semaphores,
+            _wait_binary_semaphore: wait_binary_semaphore,
         })
     }
 }
@@ -3128,7 +3135,7 @@ pub fn start_copy_segments_onto_dmabuf(
     pool: &Arc<VulkanCommandPool>,
     segments: &[(u32, u32, u32)],
     view_row_length: Option<u32>,
-    wait_semaphores: &[(Arc<VulkanTimelineSemaphore>, u64)],
+    wait_semaphores: Vec<(Arc<VulkanTimelineSemaphore>, u64)>,
 ) -> Result<VulkanCopyHandle, String> {
     let vulk: &VulkanDevice = &img.vulk;
     let format_info = get_vulkan_info(img.vk_format);
@@ -3263,6 +3270,8 @@ pub fn start_copy_segments_onto_dmabuf(
             pool: pool.clone(),
             cb,
             completion_time_point,
+            _wait_semaphores: wait_semaphores,
+            _wait_binary_semaphore: None,
         })
     }
 }
@@ -3601,7 +3610,7 @@ pub fn copy_onto_dmabuf(
             &pool,
             &[(0, 0, nom_len as u32)],
             None,
-            &[],
+            Vec::new(),
         )?;
         handle.wait_until_done()?;
         drop(handle);
@@ -3626,8 +3635,8 @@ pub fn copy_from_dmabuf(
         &pool,
         &[(0, 0, buf.nominal_size(None) as u32)],
         None,
-        &[],
-        &[],
+        Vec::new(),
+        None,
     )?;
     handle.wait_until_done()?;
     drop(handle);

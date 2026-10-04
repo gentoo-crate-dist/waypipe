@@ -64,8 +64,8 @@ mod dmabuf_stub {
         pool: &Arc<VulkanCommandPool>,
         segments: &[(u32, u32, u32)],
         view_row_length: Option<u32>,
-        wait_semaphores: &[(Arc<VulkanTimelineSemaphore>, u64)],
-        wait_binary_semaphores: &[VulkanBinarySemaphore],
+        wait_semaphores: Vec<(Arc<VulkanTimelineSemaphore>, u64)>,
+        wait_binary_semaphore: Option<VulkanBinarySemaphore>,
     ) -> Result<VulkanCopyHandle, String> {
         unreachable!();
     }
@@ -75,7 +75,7 @@ mod dmabuf_stub {
         pool: &Arc<VulkanCommandPool>,
         segments: &[(u32, u32, u32)],
         view_row_length: Option<u32>,
-        wait_semaphores: &[(Arc<VulkanTimelineSemaphore>, u64)],
+        wait_semaphores: Vec<(Arc<VulkanTimelineSemaphore>, u64)>,
     ) -> Result<VulkanCopyHandle, String> {
         unreachable!();
     }
@@ -323,8 +323,8 @@ mod video_stub {
     pub fn start_dmavid_encode(
         state: &Arc<VideoEncodeState>,
         pool: &Arc<VulkanCommandPool>,
-        wait_semaphores: &[(Arc<VulkanTimelineSemaphore>, u64)],
-        wait_binary_semaphores: &[VulkanBinarySemaphore],
+        wait_semaphores: Vec<(Arc<VulkanTimelineSemaphore>, u64)>,
+        wait_binary_semaphore: Option<VulkanBinarySemaphore>,
     ) -> Result<Vec<u8>, String> {
         unreachable!();
     }

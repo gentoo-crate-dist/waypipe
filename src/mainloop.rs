@@ -2964,8 +2964,8 @@ fn run_diff_dmabuf_task(
         pool,
         &segments[..],
         task.view_row_stride,
-        &task.acquires.explicit[..],
-        task.acquires.implicit.as_slice(),
+        task.acquires.explicit,
+        task.acquires.implicit,
     )?;
     let pt = handle.get_timeline_point();
     cache.copy_ops.push(handle);
@@ -3115,8 +3115,8 @@ fn run_fill_dmabuf_task(
         pool,
         &[(0, task.region_start, task.region_end)],
         task.view_row_stride,
-        &task.acquires.explicit[..],
-        task.acquires.implicit.as_slice(),
+        task.acquires.explicit,
+        task.acquires.implicit,
     )?;
     let pt = handle.get_timeline_point();
     cache.copy_ops.push(handle);
@@ -3331,7 +3331,7 @@ fn run_decomp_task(task: &DecompTask, cache: &mut ThreadCache) -> Result<DecompR
                         pool,
                         &segments[..],
                         target.view_row_stride,
-                        &[],
+                        Vec::new(),
                     )?;
                     let copy_id = copy_handle.get_timeline_point();
                     /* Store copy handle immediately to avoid dropping it early on error return */
@@ -3497,7 +3497,7 @@ fn run_decomp_task(task: &DecompTask, cache: &mut ThreadCache) -> Result<DecompR
                         pool,
                         &[(0, region_start as u32, region_end as u32)],
                         target.view_row_stride,
-                        &[],
+                        Vec::new(),
                     )?;
                     let copy_id = copy_handle.get_timeline_point();
                     cache.copy_ops.push(copy_handle);
@@ -3680,7 +3680,7 @@ fn run_apply_task(task: &ApplyTask, cache: &mut ThreadCache) -> TaskResult {
                     pool,
                     &[(0, task.region_start as u32, task.region_end as u32)],
                     d.target.view_row_stride,
-                    &[],
+                    Vec::new(),
                 )?;
 
                 copy_handle
@@ -3724,7 +3724,7 @@ fn run_apply_task(task: &ApplyTask, cache: &mut ThreadCache) -> TaskResult {
                     pool,
                     &[(0, task.region_start as u32, task.region_end as u32)],
                     d.target.view_row_stride,
-                    &[],
+                    Vec::new(),
                 )?;
 
                 /* Update mirror */
@@ -3806,8 +3806,8 @@ fn run_encode_task(task: VideoEncodeTask, cache: &mut ThreadCache) -> TaskResult
     let packet = start_dmavid_encode(
         &task.state,
         pool,
-        &task.acquires.explicit[..],
-        task.acquires.implicit.as_slice(),
+        task.acquires.explicit,
+        task.acquires.implicit,
     )?;
 
     let npadding = align4(packet.len()) - packet.len();

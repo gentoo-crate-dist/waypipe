@@ -2419,8 +2419,8 @@ pub fn setup_video_encode(
 pub fn start_dmavid_encode_hw(
     state: &Arc<VideoEncodeState>,
     pool: &Arc<VulkanCommandPool>,
-    wait_semaphores: &[(Arc<VulkanTimelineSemaphore>, u64)],
-    wait_binary_semaphores: &[VulkanBinarySemaphore],
+    wait_semaphores: Vec<(Arc<VulkanTimelineSemaphore>, u64)>,
+    wait_binary_semaphore: Option<VulkanBinarySemaphore>,
 ) -> Result<Vec<u8>, String> {
     let vulk: &VulkanDevice = &state.target.vulk;
     let video = vulk.video.as_ref().unwrap();
@@ -2474,8 +2474,10 @@ pub fn start_dmavid_encode_hw(
         let mut wait_values = vec![vkframe.sem_value[0]];
         wait_sems.extend(wait_semaphores.iter().map(|x| x.0.semaphore));
         wait_values.extend(wait_semaphores.iter().map(|x| x.1));
-        wait_sems.extend(wait_binary_semaphores.iter().map(|x| x.semaphore));
-        wait_values.extend(wait_binary_semaphores.iter().map(|_| u64::MAX));
+        if let Some(bs) = &wait_binary_semaphore {
+            wait_sems.push(bs.semaphore);
+            wait_values.push(u64::MAX);
+        }
 
         let init_layout = vkframe.layout[0];
         let dst_img = vk::Image::from_raw(vkframe.img[0] as _);
@@ -2797,6 +2799,10 @@ pub fn start_dmavid_encode_hw(
             .unwrap();
         vulk.dev.destroy_descriptor_pool(desc_pool, None);
 
+        /* This keeps semaphores alive until copy operations complete */
+        drop(wait_binary_semaphore);
+        drop(wait_semaphores);
+
         let mut f = frame;
         video.bindings.av_frame_free(&mut f);
 
@@ -2812,8 +2818,8 @@ pub fn start_dmavid_encode_hw(
 pub fn start_dmavid_encode_sw(
     state: &Arc<VideoEncodeState>,
     pool: &Arc<VulkanCommandPool>,
-    wait_semaphores: &[(Arc<VulkanTimelineSemaphore>, u64)],
-    wait_binary_semaphores: &[VulkanBinarySemaphore],
+    wait_semaphores: Vec<(Arc<VulkanTimelineSemaphore>, u64)>,
+    wait_binary_semaphore: Option<VulkanBinarySemaphore>,
 ) -> Result<Vec<u8>, String> {
     let vulk: &VulkanDevice = &state.target.vulk;
     let video = vulk.video.as_ref().unwrap();
@@ -3094,7 +3100,7 @@ pub fn start_dmavid_encode_sw(
         let mut waitv_values: Vec<u64> = wait_semaphores.iter().map(|x| x.1).collect();
         let mut waitv_semaphores: Vec<vk::Semaphore> =
             wait_semaphores.iter().map(|x| x.0.semaphore).collect();
-        for bs in wait_binary_semaphores {
+        if let Some(bs) = &wait_binary_semaphore {
             waitv_values.push(u64::MAX);
             waitv_semaphores.push(bs.semaphore);
         }
@@ -3173,6 +3179,10 @@ pub fn start_dmavid_encode_sw(
         drop(buf_u);
         drop(buf_v);
 
+        /* This keeps semaphores alive until copy operations complete */
+        drop(wait_binary_semaphore);
+        drop(wait_semaphores);
+
         let mut f = frame;
         video.bindings.av_frame_free(&mut f);
 
@@ -3189,13 +3199,13 @@ pub fn start_dmavid_encode_sw(
 pub fn start_dmavid_encode(
     state: &Arc<VideoEncodeState>,
     pool: &Arc<VulkanCommandPool>,
-    wait_semaphores: &[(Arc<VulkanTimelineSemaphore>, u64)],
-    wait_binary_semaphores: &[VulkanBinarySemaphore],
+    wait_semaphores: Vec<(Arc<VulkanTimelineSemaphore>, u64)>,
+    wait_binary_semaphore: Option<VulkanBinarySemaphore>,
 ) -> Result<Vec<u8>, String> {
     if matches!(state.data, VideoEncodeStateData::SW) {
-        start_dmavid_encode_sw(state, pool, wait_semaphores, wait_binary_semaphores)
+        start_dmavid_encode_sw(state, pool, wait_semaphores, wait_binary_semaphore)
     } else {
-        start_dmavid_encode_hw(state, pool, wait_semaphores, wait_binary_semaphores)
+        start_dmavid_encode_hw(state, pool, wait_semaphores, wait_binary_semaphore)
     }
 }
 
@@ -3495,7 +3505,8 @@ fn test_video(try_hardware: bool) {
 
                         copy_onto_dmabuf(&dmabuf1, &copy1, &data).unwrap();
 
-                        let packet = start_dmavid_encode(&enc_state, &pool, &[], &[]).unwrap();
+                        let packet =
+                            start_dmavid_encode(&enc_state, &pool, Vec::new(), None).unwrap();
 
                         let vid_op = start_dmavid_apply(&dec_state, &pool, &packet).unwrap();
                         vid_op.wait_until_done().unwrap();

@@ -7,23 +7,27 @@ project(
     version: '0.11.2',
 )
 
-# mention version
-raw_version = '@0@'.format(meson.project_version())
 git = find_program('git', native: true, required: false)
+ver_targets = []
+version_file = ''
 if git.found()
-    dir_arg = '--git-dir=@0@/.git'.format(meson.project_source_root())
-    commit = run_command(
-        [git, dir_arg, 'rev-parse', '--verify', '-q', 'HEAD'],
-        check: false,
-    )
-    if commit.returncode() == 0
-        raw_version = '@0@ (commit @1@)'.format(
-            meson.project_version(),
-            commit.stdout().strip(),
+    git_dir = '@0@/.git'.format(meson.project_source_root())
+    dir_arg = '--git-dir=@0@'.format(git_dir)
+
+    fs = import('fs')
+    if fs.exists(git_dir)
+        ver_target = custom_target(
+            'version',
+            output: 'version.txt',
+            build_always_stale: true,
+            command: [git, dir_arg, 'rev-parse', '--verify', '-q', 'HEAD'],
+            capture: true,
         )
+        ver_targets += [ver_target]
+        version_file = ver_target.full_path()
     endif
 endif
-version = '"@0@"'.format(raw_version)
+
 
 if get_option('build_rs')
     cargo = find_program('cargo', native: true)
@@ -151,14 +155,16 @@ if get_option('build_rs')
             target_dir,
             ','.join(features),
             '@OUTPUT@',
-            raw_version,
+            '@0@'.format(meson.project_version()),
             has_lz4.to_string('true', 'false'),
             has_zstd.to_string('true', 'false'),
             has_dmabuf,
             has_video.to_string('true', 'false'),
+            version_file,
         ],
         install: true,
         install_dir: get_option('bindir'),
+        depends: ver_targets,
     )
 
     test(

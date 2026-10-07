@@ -4,7 +4,7 @@
 # because --artifact-dir is still nightly-only
 set -e
 
-if [ $# -ne 10 ] ; then
+if [ $# -ne 11 ]; then
     echo "Incorrect number of arguments: $#"
     exit 1
 fi
@@ -12,7 +12,15 @@ fi
 # This is a workaround for Rust having no simple and stable compile
 # time conditional string concatenation; and meson not properly
 # handling newlines or backslashes in custom targets
-version="$6
+
+if [ -n "${11}" ]; then
+    commit=$(cat "${11}")
+    tag=" (commit ${commit})"
+else
+    tag=
+fi
+
+version="$6${tag}
 features:
   lz4: $7
   zstd: $8

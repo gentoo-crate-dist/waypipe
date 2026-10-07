@@ -5,6 +5,22 @@ add_project_arguments('-D_DEFAULT_SOURCE', language: 'c')
 # Sometimes ignoring the result of read()/write() is the right thing to do
 add_project_arguments('-Wno-unused-result', language: 'c')
 
+raw_version = '@0@'.format(meson.project_version())
+if git.found()
+    dir_arg = '--git-dir=@0@/.git'.format(meson.project_source_root())
+    commit = run_command(
+        [git, dir_arg, 'rev-parse', '--verify', '-q', 'HEAD'],
+        check: false,
+    )
+    if commit.returncode() == 0
+        raw_version = '@0@ (commit @1@)'.format(
+            meson.project_version(),
+            commit.stdout().strip(),
+        )
+    endif
+endif
+version = '"@0@"'.format(raw_version)
+
 cc = meson.get_compiler('c')
 config_data = configuration_data()
 config_data.set('WAYPIPE_VERSION', version)

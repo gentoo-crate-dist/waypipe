@@ -680,13 +680,15 @@ pub unsafe fn setup_video(
         av_hwdevice_ctx_init(&lib, device_ref)?;
 
         // For vulkan, hwconfig currently ignored
-        let hwframes_constraints =
+        let mut hwframes_constraints =
             lib.av_hwdevice_get_hwframe_constraints(device_ref, std::ptr::null_mut());
-
-        // NOTE: these are all formats supported by Vulkan; must constrain with decoding details...
-        let _hw_fmtlist = (*hwframes_constraints).valid_hw_formats;
-        let _sw_fmtlist = (*hwframes_constraints).valid_sw_formats;
-        /* TODO: hwframes_constraints only gives Vulkan limitations; decoder may have other limits (like <= 4096 wide), as seen by trace output */
+        if !hwframes_constraints.is_null() {
+            // NOTE: these are all formats supported by Vulkan; must constrain with decoding details...
+            let _hw_fmtlist = (*hwframes_constraints).valid_hw_formats;
+            let _sw_fmtlist = (*hwframes_constraints).valid_sw_formats;
+            /* TODO: hwframes_constraints only gives Vulkan limitations; decoder may have other limits (like <= 4096 wide), as seen by trace output */
+            lib.av_hwframe_constraints_free(&mut hwframes_constraints);
+        }
 
         device_ref
     } else {
@@ -1410,16 +1412,27 @@ pub fn start_dmavid_decode_hw(
     };
 
     unsafe {
-        let av_packet = video.bindings.av_packet_alloc();
-        video
+        let mut av_packet = video.bindings.av_packet_alloc();
+        if av_packet.is_null() {
+            return Err(tag!("Failed to allocate container for video packet"));
+        }
+        if video
             .bindings
-            .av_new_packet(av_packet, packet.len().try_into().unwrap());
+            .av_new_packet(av_packet, packet.len().try_into().unwrap())
+            != 0
+        {
+            video.bindings.av_packet_free(&mut av_packet);
+            return Err(tag!("Failed to allocate buffers for video packet"));
+        }
         (*av_packet).data.copy_from(packet.as_ptr(), packet.len());
 
         let dec_inner = state.inner.lock().unwrap();
         avcodec_send_packet(&video.bindings, dec_inner.ctx, av_packet)?;
 
         let frame: *mut AVFrame = video.bindings.av_frame_alloc();
+        if frame.is_null() {
+            return Err(tag!("Failed to allocate frame"));
+        }
 
         // ignoring EAGAIN, since Waypipe's video streaming does one packet, one frame
         avcodec_receive_frame(&video.bindings, dec_inner.ctx, frame)?;
@@ -1810,10 +1823,18 @@ pub fn start_dmavid_decode_sw(
         packet.len()
     );
     unsafe {
-        let av_packet = video.bindings.av_packet_alloc();
-        video
+        let mut av_packet = video.bindings.av_packet_alloc();
+        if av_packet.is_null() {
+            return Err(tag!("Failed to allocate container for video packet"));
+        }
+        if video
             .bindings
-            .av_new_packet(av_packet, packet.len().try_into().unwrap());
+            .av_new_packet(av_packet, packet.len().try_into().unwrap())
+            != 0
+        {
+            video.bindings.av_packet_free(&mut av_packet);
+            return Err(tag!("Failed to allocate buffers for video packet"));
+        }
         (*av_packet).data.copy_from(packet.as_ptr(), packet.len());
 
         let dec_inner = state.inner.lock().unwrap();
@@ -1821,6 +1842,9 @@ pub fn start_dmavid_decode_sw(
         avcodec_send_packet(&video.bindings, dec_inner.ctx, av_packet)?;
 
         let frame: *mut AVFrame = video.bindings.av_frame_alloc();
+        if frame.is_null() {
+            return Err(tag!("Failed to allocate frame"));
+        }
 
         avcodec_receive_frame(&video.bindings, dec_inner.ctx, frame)?;
 
@@ -2787,6 +2811,9 @@ pub fn start_dmavid_encode_hw(
         avcodec_send_frame(&video.bindings, enc_inner.ctx, frame)?;
 
         let mut packet: *mut AVPacket = video.bindings.av_packet_alloc();
+        if packet.is_null() {
+            return Err(tag!("Failed to allocate container for video packet"));
+        }
 
         avcodec_receive_packet(&video.bindings, enc_inner.ctx, packet)?;
 
@@ -3154,6 +3181,9 @@ pub fn start_dmavid_encode_sw(
         avcodec_send_frame(&video.bindings, enc_inner.ctx, frame)?;
 
         let mut packet: *mut AVPacket = video.bindings.av_packet_alloc();
+        if packet.is_null() {
+            return Err(tag!("Failed to allocate container for video packet"));
+        }
 
         avcodec_receive_packet(&video.bindings, enc_inner.ctx, packet)?;
 

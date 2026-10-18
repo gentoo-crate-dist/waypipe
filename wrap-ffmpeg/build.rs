@@ -57,6 +57,7 @@ fn main() {
         "av_hwdevice_ctx_alloc",
         "av_hwdevice_ctx_init",
         "av_hwdevice_get_hwframe_constraints",
+        "av_hwframe_constraints_free",
         "av_hwframe_ctx_alloc",
         "av_hwframe_ctx_init",
         "av_hwframe_get_buffer",

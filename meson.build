@@ -4,7 +4,7 @@ project(
     license: ['GPL3+', 'MIT/Expat'],
     meson_version: '>=0.56.0',
     default_options: ['c_std=c11', 'warning_level=3', 'werror=true'],
-    version: '0.11.2',
+    version: '0.11.3',
 )
 
 git = find_program('git', native: true, required: false)
